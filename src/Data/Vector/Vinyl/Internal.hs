@@ -78,6 +78,19 @@ type family Tail rs where
 -- data MVector :: (* -> * -> *) -> (* -> * -> *) -> * -> * -> * where
 --   MV :: !(u s a) -> !(v s b) -> MVector u v s (a, b)
 
+-- Just a helper function to reduce the broilerplate in the 
+-- instance methods
+consVec :: Proxy m
+        -> Int 
+        -> G.Mutable (Vectorize r) (PrimState m) r 
+        -> MVector (PrimState m) (Rec Identity rs)
+        -> MVector (PrimState m) (Rec Identity (r ': rs))
+consVec _ n v (MV _ rs) = MV n (VectorMVal v :& rs)
+{-# INLINE consVec #-}
+
+stripMV :: Proxy m -> MVector (PrimState m) (Rec Identity rs) -> Rec (VectorMVal (PrimState m)) rs
+stripMV _ (MV _ rs) = rs
+
 instance ( GM.MVector MVector (Rec Identity rs)
          , CanVectorize r
          )
@@ -94,34 +107,38 @@ instance ( GM.MVector MVector (Rec Identity rs)
   {-# INLINE basicOverlaps #-}
 
   basicUnsafeNew :: forall m. PrimMonad m => Int -> m (MVector (PrimState m) (Rec Identity (r ': rs)))
-  basicUnsafeNew n = do
-    r <- GM.basicUnsafeNew n
-    m <- GM.basicUnsafeNew n
-    return (MV n (VectorMVal r :& go m))
-    where 
-      go :: MVector (PrimState m) (Rec Identity rs) -> Rec (VectorMVal (PrimState m)) rs
-      go (MV _ rs) = rs
+  basicUnsafeNew n = 
+    consVec (Proxy :: Proxy m) n <$> GM.basicUnsafeNew n <*> GM.basicUnsafeNew n
   {-# INLINE basicUnsafeNew #-}
+  
+  basicUnsafeReplicate :: forall m. PrimMonad m => Int -> Rec Identity (r ': rs) -> m (MVector (PrimState m) (Rec Identity (r ': rs)))
+  basicUnsafeReplicate n (Identity v :& rs) = 
+    consVec (Proxy :: Proxy m) n <$> GM.basicUnsafeReplicate n v <*> GM.basicUnsafeReplicate n rs
+  {-# INLINE basicUnsafeReplicate #-}
+
+  -- basicUnsafeRead :: forall m. PrimMonad m => MVector (PrimState m) (Rec Identity (r ': rs)) -> Int -> m (Rec Identity (r ': rs))
+  basicUnsafeRead (MV i (VectorMVal v :& rs)) n = do
+    r <- GM.basicUnsafeRead v n
+    rs <- GM.basicUnsafeRead (MV i rs) n
+    return (Identity r :& rs)
+  {-# INLINE basicUnsafeRead #-}
+
+  basicUnsafeWrite (MV i (VectorMVal v :& vrs)) n (Identity r :& rs) = do
+    GM.basicUnsafeWrite v n r
+    GM.basicUnsafeWrite (MV i vrs) n rs
+  {-# INLINE basicUnsafeWrite #-}
+
+  basicClear (MV i (VectorMVal v :& vrs)) = do
+    GM.basicClear v
+    GM.basicClear (MV i vrs)
+  {-# INLINE basicClear #-}
+
+  basicSet (MV i (VectorMVal v :& vrs)) (Identity r :& rs) = do
+    GM.basicSet v r
+    GM.basicSet (MV i vrs) rs
+  {-# INLINE basicSet #-}
 
 -- instance (GM.MVector u a, GM.MVector v b) => GM.MVector (MVector u v) (a, b) where
---   basicUnsafeNew n = liftM2 MV (GM.basicUnsafeNew n) (GM.basicUnsafeNew n)
---   {-# INLINE basicUnsafeNew #-}
---   basicUnsafeReplicate n (k,v) = liftM2 MV (GM.basicUnsafeReplicate n k) (GM.basicUnsafeReplicate n v)
---   {-# INLINE basicUnsafeReplicate #-}
---   basicUnsafeRead (MV ks vs) n = liftM2 (,) (GM.basicUnsafeRead ks n) (GM.basicUnsafeRead vs n)
---   {-# INLINE basicUnsafeRead #-}
---   basicUnsafeWrite (MV ks vs) n (k,v) = do
---     GM.basicUnsafeWrite ks n k
---     GM.basicUnsafeWrite vs n v
---   {-# INLINE basicUnsafeWrite #-}
---   basicClear (MV ks vs) = do
---     GM.basicClear ks
---     GM.basicClear vs
---   {-# INLINE basicClear #-}
---   basicSet (MV ks vs) (k,v) = do
---     GM.basicSet ks k
---     GM.basicSet vs v
---   {-# INLINE basicSet #-}
 --   basicUnsafeCopy (MV ks vs) (MV ks' vs') = do
 --     GM.basicUnsafeCopy ks ks'
 --     GM.basicUnsafeCopy vs vs'

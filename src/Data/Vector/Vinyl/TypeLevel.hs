@@ -4,6 +4,17 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Copyright   :  Andrew Martin
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Andrew Martin <andrew.thaddeus@gmail.com>
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- Try to merge this into vinyl at some point.
+-----------------------------------------------------------------------------
 module Data.Vector.Vinyl.TypeLevel
   ( ListAll
   ) where

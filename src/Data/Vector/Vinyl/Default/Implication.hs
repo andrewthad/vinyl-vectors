@@ -1,6 +1,20 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Copyright   :  Andrew Martin
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Andrew Martin <andrew.thaddeus@gmail.com>
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- This module uses the "constraints" package to prove that if all of the
+-- columns satisfy the 'HasDefaultVector' constraint, then a vector 
+-- parameterized over the record has an instance of the generic vector 
+-- typeclass.
+-----------------------------------------------------------------------------
 module Data.Vector.Vinyl.Default.Implication where
 
 import Data.Constraint

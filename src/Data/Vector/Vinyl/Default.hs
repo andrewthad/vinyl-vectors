@@ -16,7 +16,13 @@
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
--- TODO: Write an explanation.
+-- There are two vector types provided by this module: 'Vector' and
+-- 'MVector'. They must be parameterized over a type that unifies
+-- with 'Rec Identity rs'. An example would be:
+--
+-- > foo :: Vector (Rec Identity '[Int,Char,Bool])
+-- 
+-- This vector stores records that have an 'Int', a 'Char', and a 'Bool'.
 -----------------------------------------------------------------------------
 module Data.Vector.Vinyl.Default
   ( Vector, MVector

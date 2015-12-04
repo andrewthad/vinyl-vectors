@@ -1,5 +1,5 @@
 name:                vinyl-vectors
-version:             0.1.0.2
+version:             0.1.0.3
 synopsis:            Vectors for vinyl vectors
 description:         This library provides vectors of vinyl records stored
                      as a structure of arrays. This vectors types provided

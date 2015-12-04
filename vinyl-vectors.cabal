@@ -10,13 +10,12 @@ maintainer:          example@example.com
 copyright:           2010 Author Here
 category:            Web
 build-type:          Simple
--- extra-source-files:
 cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.Vector.Vinyl
-                     , Data.Vector.Vinyl.Internal
+  exposed-modules:     Data.Vector.Vinyl.Default
+                     , Data.Vector.Vinyl.Default.Internal
   build-depends:       base >= 4.7 && < 5
                      , vinyl >= 0.5.1 && < 0.5.2
                      , vector >= 0.10 && < 0.12

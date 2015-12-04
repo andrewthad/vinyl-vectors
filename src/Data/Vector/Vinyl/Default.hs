@@ -624,8 +624,8 @@ mapM = G.mapM
 
 -- | /O(n)/ Apply the monadic action to all elements of a vector and ignore the
 -- results
-mapM_ :: (Monad m, G.Vector Vector (Rec Identity rs), G.Vector Vector (Rec Identity ss))
-  => (Rec Identity rs -> m (Rec Identity ss)) -> Vector (Rec Identity rs) -> m ()
+mapM_ :: (Monad m, G.Vector Vector (Rec Identity rs))
+  => (Rec Identity rs -> m b) -> Vector (Rec Identity rs) -> m ()
 mapM_ = G.mapM_
 {-# INLINE mapM_ #-}
 
@@ -638,8 +638,8 @@ forM = G.forM
 
 -- | /O(n)/ Apply the monadic action to all elements of a vector and ignore the
 -- results. Equivalent to @flip 'mapM_'@.
-forM_ :: (Monad m, G.Vector Vector (Rec Identity rs), G.Vector Vector (Rec Identity ss))
-  => Vector (Rec Identity rs) -> (Rec Identity rs -> m (Rec Identity ss)) -> m ()
+forM_ :: (Monad m, G.Vector Vector (Rec Identity rs))
+  => Vector (Rec Identity rs) -> (Rec Identity rs -> m b) -> m ()
 forM_ = G.forM_
 {-# INLINE forM_ #-}
 

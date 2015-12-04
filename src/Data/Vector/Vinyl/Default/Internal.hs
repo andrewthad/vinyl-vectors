@@ -23,7 +23,6 @@ module Data.Vector.Vinyl.Default.Internal
   , MVectorVal(..)
   , Vector(..)
   , HasDefaultVector(..)
-  , LAll
   ) where
 
 import Control.Monad
@@ -48,26 +47,32 @@ import Data.Proxy
 
 import Data.Vinyl.Core(Rec(..))
 import Data.Vinyl.Functor (Identity(..))
+import qualified Data.Text as Text
+import qualified Data.Text.Lazy as LText
 
+-- | The most efficient vector type for each column data type.
 class ( GM.MVector (G.Mutable (DefaultVector t)) t
       , G.Vector (DefaultVector t) t
       ) => HasDefaultVector t where
   type DefaultVector t :: * -> *
 
--- | A constraint on each element of a type-level list.
-type family LAll c ts :: Constraint where
-  LAll c '[] = ()
-  LAll c (t ': ts) = (c t, LAll c ts)
-
--- | The most efficient vector type for each column data type.
 instance HasDefaultVector Int where
   type DefaultVector Int = U.Vector
+instance HasDefaultVector Char where
+  type DefaultVector Char = U.Vector
 instance HasDefaultVector Bool where
   type DefaultVector Bool = U.Vector
 instance HasDefaultVector Float where
   type DefaultVector Float = U.Vector
 instance HasDefaultVector Double where
   type DefaultVector Double = U.Vector
+instance HasDefaultVector Text.Text where
+  type DefaultVector Text.Text = B.Vector
+instance HasDefaultVector LText.Text where
+  type DefaultVector LText.Text = B.Vector
+instance G.Vector Vector (Rec Identity rs)
+    => HasDefaultVector (Rec Identity rs) where
+  type DefaultVector (Rec Identity rs) = Vector
 
 newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
 

@@ -1,6 +1,6 @@
 name:                vinyl-vectors
-version:             0.1.0.1
-synopsis:            Initial project template from stack
+version:             0.1.0.2
+synopsis:            Vectors for vinyl vectors
 description:         This library provides vectors of vinyl records stored
                      as a structure of arrays. This vectors types provided
                      implement the generic vector interface and can be
@@ -9,10 +9,10 @@ description:         This library provides vectors of vinyl records stored
 homepage:            http://github.com/andrewthad/vinyl-vectors
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2010 Author Here
-category:            Web
+author:              Andrew Martin
+maintainer:          andrew.thaddeus@gmail.com
+copyright:           2015 Andrew Martin
+category:            Vector
 build-type:          Simple
 cabal-version:       >=1.10
 

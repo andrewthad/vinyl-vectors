@@ -20,7 +20,6 @@
 
 module Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
   ( MVector(..)
-  , MVectorVal(..)
   , Vector(..)
   , HasDefaultVector(..)
   ) where
@@ -32,8 +31,6 @@ import GHC.Exts (Constraint)
 import Control.Monad.Primitive (PrimMonad,PrimState)
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Generic as G
-import qualified Data.Vector as B
-import qualified Data.Vector.Unboxed as U
 
 #if MIN_VERSION_vector(0,11,0)
 import Data.Vector.Fusion.Bundle as Stream
@@ -47,34 +44,7 @@ import Data.Proxy
 
 import Data.Vinyl.Core(Rec(..))
 import Data.Vinyl.Functor (Identity(..))
-import qualified Data.Text as Text
-import qualified Data.Text.Lazy as LText
-
--- | The most efficient vector type for each column data type.
-class ( GM.MVector (G.Mutable (DefaultVector t)) t
-      , G.Vector (DefaultVector t) t
-      ) => HasDefaultVector t where
-  type DefaultVector t :: * -> *
-
-instance HasDefaultVector Int where
-  type DefaultVector Int = U.Vector
-instance HasDefaultVector Char where
-  type DefaultVector Char = U.Vector
-instance HasDefaultVector Bool where
-  type DefaultVector Bool = U.Vector
-instance HasDefaultVector Float where
-  type DefaultVector Float = U.Vector
-instance HasDefaultVector Double where
-  type DefaultVector Double = U.Vector
-instance HasDefaultVector Text.Text where
-  type DefaultVector Text.Text = B.Vector
-instance HasDefaultVector LText.Text where
-  type DefaultVector LText.Text = B.Vector
-instance G.Vector Vector (Rec Identity rs)
-    => HasDefaultVector (Rec Identity rs) where
-  type DefaultVector (Rec Identity rs) = Vector
-
-newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
+import Data.Vector.Vinyl.Default.Types (VectorVal(..),MVectorVal(..),HasDefaultVector(..))
 
 data MVector :: * -> * -> * where
   MV :: !(Rec (MVectorVal s) rs) -> MVector s (Rec Identity rs)
@@ -190,8 +160,6 @@ instance ( GM.MVector MVector (Rec Identity (s ': rs))
     GM.basicInitialize (MV rs)
   {-# INLINE basicInitialize #-}
 #endif
-
-newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 
 data Vector :: * -> * where
   V :: !(Rec VectorVal rs) -> Vector (Rec Identity rs)

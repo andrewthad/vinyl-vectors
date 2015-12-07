@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -56,11 +57,65 @@ instance ( HasDefaultVector a
          , HasDefaultVector b
          )
     => GM.MVector MV_Tuple2 (a,b) where
+  basicLength (MV_Tuple2 (MVectorVal v) _) = GM.basicLength v
+  {-# INLINE basicLength #-}
+  basicUnsafeSlice s e (MV_Tuple2 (MVectorVal v) (MVectorVal u)) = MV_Tuple2
+    (MVectorVal (GM.basicUnsafeSlice s e v))
+    (MVectorVal (GM.basicUnsafeSlice s e u))
+  {-# INLINE basicUnsafeSlice #-}
+  basicOverlaps (MV_Tuple2 (MVectorVal v1) (MVectorVal u1)) (MV_Tuple2 (MVectorVal v2) (MVectorVal u2)) = 
+    GM.basicOverlaps v1 v2 || GM.basicOverlaps u1 u2
+  {-# INLINE basicOverlaps #-}
+  basicUnsafeNew n = MV_Tuple2 <$> fmap MVectorVal (GM.basicUnsafeNew n)
+                               <*> fmap MVectorVal (GM.basicUnsafeNew n)
+  {-# INLINE basicUnsafeNew #-}
+  basicUnsafeReplicate n (a,b) = 
+    MV_Tuple2 <$> (fmap MVectorVal (GM.basicUnsafeReplicate n a))
+              <*> (fmap MVectorVal (GM.basicUnsafeReplicate n b))
+  {-# INLINE basicUnsafeReplicate #-}
+  basicUnsafeRead (MV_Tuple2 (MVectorVal v) (MVectorVal u)) n = do
+    v' <- GM.basicUnsafeRead v n
+    u' <- GM.basicUnsafeRead u n
+    return (v',u')
+  {-# INLINE basicUnsafeRead #-}
+  basicUnsafeWrite (MV_Tuple2 (MVectorVal v) (MVectorVal u)) n (v',u') = do
+    GM.basicUnsafeWrite v n v'
+    GM.basicUnsafeWrite u n u'
+  {-# INLINE basicUnsafeWrite #-}
+  basicClear (MV_Tuple2 (MVectorVal v) (MVectorVal u)) = do
+    GM.basicClear v
+    GM.basicClear u
+  {-# INLINE basicClear #-}
+  basicSet (MV_Tuple2 (MVectorVal v) (MVectorVal u)) (v',u') = do
+    GM.basicSet v v'
+    GM.basicSet u u'
+  {-# INLINE basicSet #-}
+  basicUnsafeCopy (MV_Tuple2 (MVectorVal v1) (MVectorVal u1)) (MV_Tuple2 (MVectorVal v2) (MVectorVal u2)) = do
+    GM.basicUnsafeCopy v1 v2
+    GM.basicUnsafeCopy u1 u2
+  {-# INLINE basicUnsafeCopy #-}
+  basicUnsafeMove (MV_Tuple2 (MVectorVal v1) (MVectorVal u1)) (MV_Tuple2 (MVectorVal v2) (MVectorVal u2)) = do
+    GM.basicUnsafeMove v1 v2
+    GM.basicUnsafeMove u1 u2
+  {-# INLINE basicUnsafeMove #-}
+  basicUnsafeGrow (MV_Tuple2 (MVectorVal v) (MVectorVal u)) n = do
+    v' <- GM.basicUnsafeGrow v n
+    u' <- GM.basicUnsafeGrow u n
+    return (MV_Tuple2 (MVectorVal v') (MVectorVal u'))
+  {-# INLINE basicUnsafeGrow #-}
+
+#if MIN_VERSION_vector(0,11,0)
+  basicInitialize (MV_Tuple2 (MVectorVal v) (MVectorVal u)) = do
+    GM.basicInitialize v
+    GM.basicInitialize u
+  {-# INLINE basicInitialize #-}
+#endif
 instance ( HasDefaultVector a
          , HasDefaultVector b
          )
     => G.Vector V_Tuple2 (a,b) where
 type instance G.Mutable V_Tuple2 = MV_Tuple2
+  --WRITE THIS!!!
 
 class HasVectorizableRepresentation a where
   type VectorizableRepresentation a :: *

@@ -14,7 +14,7 @@ import GHC.Exts (Constraint)
 import Data.Proxy (Proxy(Proxy))
 import Lens.Micro ((^.))
 import Data.Vector.Vinyl.TypeLevel (ListAll)
-import qualified Data.Vector.Vinyl.Default as V
+import qualified Data.Vector.Vinyl.Default.Empty.Monomorphic as V
 import qualified Data.Vector.Algorithms.Intro as Intro
 import qualified Data.Vector.Algorithms.Merge as Merge
 

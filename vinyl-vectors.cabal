@@ -22,10 +22,14 @@ flag examples
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.Vector.Vinyl.Default
-                     , Data.Vector.Vinyl.Default.Implication
-                     , Data.Vector.Vinyl.Default.Internal
-                     , Data.Vector.Vinyl.Default.Mutable
+  exposed-modules:     Data.Vector.Vinyl.Default.Empty.Monomorphic
+                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Implication
+                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
+                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Mutable
+
+                     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
+                     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
+
                      , Data.Vector.Vinyl.TypeLevel
   build-depends:       base >= 4.7 && < 5
                      , vinyl >= 0.5.1 && < 0.5.2

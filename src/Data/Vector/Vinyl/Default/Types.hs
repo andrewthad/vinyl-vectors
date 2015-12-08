@@ -11,6 +11,7 @@ module Data.Vector.Vinyl.Default.Types
   ( MVectorVal(..)
   , VectorVal(..)
   , HasDefaultVector(..)
+  , DefaultBoxed(..)
   ) where
 
 import Data.Default (Default(def))
@@ -18,18 +19,26 @@ import qualified Data.Vector as B
 import qualified Data.Vector.Unboxed as U
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LText
+import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Lazy as LByteString
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Generic as G
 import Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
+import Data.Int (Int8,Int16,Int32,Int64)
+import Data.Word (Word8,Word16,Word32,Word64)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
+newtype DefaultBoxed a = DefaultBoxed { getDefaultBoxed :: a }
 
 -- | The most efficient vector type for each column data type.
 class ( GM.MVector (G.Mutable (DefaultVector t)) t
       , G.Vector (DefaultVector t) t
       ) => HasDefaultVector t where
   type DefaultVector t :: * -> *
+
+instance HasDefaultVector (DefaultBoxed a) where
+  type DefaultVector (DefaultBoxed a) = B.Vector
 
 instance HasDefaultVector Int where
   type DefaultVector Int = U.Vector
@@ -41,10 +50,37 @@ instance HasDefaultVector Float where
   type DefaultVector Float = U.Vector
 instance HasDefaultVector Double where
   type DefaultVector Double = U.Vector
+
+instance HasDefaultVector Int8 where
+  type DefaultVector Int8 = U.Vector
+instance HasDefaultVector Int16 where
+  type DefaultVector Int16 = U.Vector
+instance HasDefaultVector Int32 where
+  type DefaultVector Int32 = U.Vector
+instance HasDefaultVector Int64 where
+  type DefaultVector Int64 = U.Vector
+
+instance HasDefaultVector Word8 where
+  type DefaultVector Word8 = U.Vector
+instance HasDefaultVector Word16 where
+  type DefaultVector Word16 = U.Vector
+instance HasDefaultVector Word32 where
+  type DefaultVector Word32 = U.Vector
+instance HasDefaultVector Word64 where
+  type DefaultVector Word64 = U.Vector
+
+instance HasDefaultVector [a] where
+  type DefaultVector [a] = B.Vector
+
 instance HasDefaultVector Text.Text where
   type DefaultVector Text.Text = B.Vector
 instance HasDefaultVector LText.Text where
   type DefaultVector LText.Text = B.Vector
+instance HasDefaultVector ByteString.ByteString where
+  type DefaultVector ByteString.ByteString = B.Vector
+instance HasDefaultVector LByteString.ByteString where
+  type DefaultVector LByteString.ByteString = B.Vector
+
 instance (HasDefaultVector a, HasDefaultVector b) => HasDefaultVector (a,b) where
   type DefaultVector (a,b) = V_Tuple2
 
@@ -53,6 +89,8 @@ data MV_Tuple2 s c where
   MV_Tuple2 :: MVectorVal s a -> MVectorVal s b -> MV_Tuple2 s (a,b)
 data V_Tuple2 c where
   V_Tuple2 :: VectorVal a -> VectorVal b -> V_Tuple2 (a,b)
+type instance G.Mutable V_Tuple2 = MV_Tuple2
+
 instance ( HasDefaultVector a
          , HasDefaultVector b
          )
@@ -114,8 +152,33 @@ instance ( HasDefaultVector a
          , HasDefaultVector b
          )
     => G.Vector V_Tuple2 (a,b) where
-type instance G.Mutable V_Tuple2 = MV_Tuple2
-  --WRITE THIS!!!
+  basicUnsafeFreeze (MV_Tuple2 (MVectorVal v) (MVectorVal u)) = do
+    v' <- G.basicUnsafeFreeze v
+    u' <- G.basicUnsafeFreeze u
+    return (V_Tuple2 (VectorVal v') (VectorVal u'))
+  {-# INLINE basicUnsafeFreeze #-}
+  basicUnsafeThaw (V_Tuple2 (VectorVal v) (VectorVal u)) = do
+    v' <- G.basicUnsafeThaw v
+    u' <- G.basicUnsafeThaw u
+    return (MV_Tuple2 (MVectorVal v') (MVectorVal u'))
+  {-# INLINE basicUnsafeThaw #-}
+  basicLength (V_Tuple2 (VectorVal v) _) = G.basicLength v
+  {-# INLINE basicLength #-}
+  basicUnsafeSlice s e (V_Tuple2 (VectorVal v) (VectorVal u)) = 
+    (V_Tuple2 (VectorVal (G.basicUnsafeSlice s e v)) 
+              (VectorVal (G.basicUnsafeSlice s e u)))
+  {-# INLINE basicUnsafeSlice #-}
+  basicUnsafeIndexM (V_Tuple2 (VectorVal v) (VectorVal u)) n = do
+    v' <- G.basicUnsafeIndexM v n
+    u' <- G.basicUnsafeIndexM u n
+    return (v',u')
+  {-# INLINE basicUnsafeIndexM #-}
+  basicUnsafeCopy (MV_Tuple2 (MVectorVal mv) (MVectorVal mu)) (V_Tuple2 (VectorVal v) (VectorVal u)) = do
+    G.basicUnsafeCopy mv v
+    G.basicUnsafeCopy mu u
+  {-# INLINE basicUnsafeCopy #-}
+  elemseq (V_Tuple2 (VectorVal v) (VectorVal u)) (v',u') b = G.elemseq v v' (G.elemseq u u' b)
+  {-# INLINE elemseq #-}
 
 class HasVectorizableRepresentation a where
   type VectorizableRepresentation a :: *

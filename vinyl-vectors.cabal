@@ -21,31 +21,35 @@ flag examples
   default:     False
 
 library
-  hs-source-dirs:      src
-  exposed-modules:     Data.Vector.Vinyl.Default.Empty.Monomorphic
-                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Implication
-                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
-                     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Mutable
+  hs-source-dirs: src
+  exposed-modules:     
+      Data.Vector.Vinyl.Default.Empty.Monomorphic
+    , Data.Vector.Vinyl.Default.Empty.Monomorphic.Implication
+    , Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
+    , Data.Vector.Vinyl.Default.Empty.Monomorphic.Mutable
 
-                     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
-                     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
+    , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
+    , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
+    , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join
 
-                     , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Internal
-                     , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Implication
+    , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Internal
+    , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Implication
 
-                     , Data.Vector.Vinyl.Default.Types
-                     -- , Data.Vector.Vinyl.Default.Types.Derived
-                     , Data.Vector.Vinyl.Default.Types.Deriving
-                     , Data.Vector.Vinyl.TypeLevel
-  build-depends:       base >= 4.7 && < 5
-                     , vinyl >= 0.5.1 && < 0.5.2
-                     , vector >= 0.10 && < 0.12
-                     , primitive >=0.6 && <0.7
-                     , constraints >= 0.4
-                     , data-default >= 0.5
-                     , template-haskell  >= 2.5
-                     , text 
-                     , bytestring
+    , Data.Vector.Vinyl.Default.Types
+    , Data.Vector.Vinyl.Default.Types.Deriving
+    , Data.Vector.Vinyl.TypeLevel
+  build-depends:       
+      base >= 4.7 && < 5
+    , bytestring
+    , constraints >= 0.4
+    , data-default >= 0.5
+    , hybrid-vectors >= 0.2.1
+    , primitive >=0.6 && <0.7
+    , template-haskell  >= 2.5
+    , text 
+    , vector >= 0.10 && < 0.12
+    , vector-algorithms >= 0.6.0.0 && < 1.0
+    , vinyl >= 0.5.1 && < 0.5.2
   default-language:    Haskell2010
   ghc-options: -Wall -O2 
 
@@ -64,6 +68,39 @@ executable sorting
   hs-source-dirs: examples
   default-language: Haskell2010
   ghc-options: -O2
+
+executable joining
+  if !flag(examples)
+    buildable: False
+  main-is: joining.hs
+  if flag(examples)
+    build-depends: 
+        vinyl-vectors
+      , hybrid-vectors    >= 0.2.1
+      , vector            >= 0.10 
+      , base              >= 4.7 && < 5.0
+      , text              >= 0.8.0.0
+  hs-source-dirs: examples
+  default-language: Haskell2010
+  ghc-options: -O2
+
+test-suite             vinyl-vectors-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Test.hs
+  default-language: Haskell2010
+  default-extensions:  
+    TypeFamilies
+  build-depends:       
+      vinyl-vectors
+    , HUnit             >= 1.2
+    , QuickCheck        >= 2.8.0
+    , base              >= 4.7 && < 5.0
+    , hybrid-vectors >= 0.2.1
+    , test-framework    >= 0.8
+    , test-framework-hunit    
+    , test-framework-quickcheck2
+    , vector >= 0.10 && < 0.12
 
 source-repository head
   type:     git

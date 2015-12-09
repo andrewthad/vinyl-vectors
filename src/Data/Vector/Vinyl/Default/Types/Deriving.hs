@@ -106,7 +106,7 @@ derivingVector name cname famName vecRep argsQ toRepQ fromRepQ = do
     fromRep <- fromRepQ
     a <- second (AppE toRep) <$> newPatExp "val"
     args <- argsQ
-    (cxts, typ, rep) <- case args of
+    (cxts, typ, _rep) <- case args of
         ForallT _ cxts (ArrowT `AppT` typ `AppT` rep) -> return (cxts, typ, rep)
         ArrowT `AppT` typ `AppT` rep -> return ([], typ, rep)
         _ -> fail "Expecting a type of the form: cxts => typ -> rep"

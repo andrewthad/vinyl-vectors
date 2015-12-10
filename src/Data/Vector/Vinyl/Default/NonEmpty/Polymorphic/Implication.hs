@@ -1,7 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
-
 -----------------------------------------------------------------------------
 -- |
 -- Copyright   :  Andrew Martin

@@ -38,18 +38,39 @@ library
     , Data.Vector.Vinyl.Default.Types
     , Data.Vector.Vinyl.Default.Types.Deriving
     , Data.Vector.Vinyl.TypeLevel
+
+    , Data.Vinyl.Named
+    , Data.Vinyl.Arbitrary
   build-depends:       
-      base >= 4.7 && < 5
+      base              >= 4.7 && < 5
     , bytestring
-    , constraints >= 0.4
-    , data-default >= 0.5
-    , hybrid-vectors >= 0.2.1
-    , primitive >=0.6 && <0.7
+    , constraints       >= 0.4
+    , data-default      >= 0.5
+    , hybrid-vectors    >= 0.2.1
+    , primitive         >= 0.6 && <0.7
+    , QuickCheck        >= 2.8.0
     , template-haskell  >= 2.5
     , text 
-    , vector >= 0.10 && < 0.12
+    , vector            >= 0.10 && < 0.12
     , vector-algorithms >= 0.6.0.0 && < 1.0
-    , vinyl >= 0.5.1 && < 0.5.2
+    , vinyl             >= 0.5.1 && < 0.5.2
+    , containers        >= 0.5.0
+    , ghc-prim          >= 0.4.0.0
+  default-extensions:
+    KindSignatures
+    TypeOperators
+    GADTs
+    DataKinds
+    MultiParamTypeClasses
+    RankNTypes
+    ScopedTypeVariables
+    InstanceSigs
+    TypeFamilies
+    FlexibleContexts
+    ConstraintKinds
+    UndecidableInstances
+    -- Don't enable PolyKinds. It makes the vector
+    -- stuff freak out.
   default-language:    Haskell2010
   ghc-options: -Wall -O2 
 
@@ -91,6 +112,7 @@ test-suite             vinyl-vectors-test
   default-language: Haskell2010
   default-extensions:  
     TypeFamilies
+    DataKinds
   build-depends:       
       vinyl-vectors
     , HUnit             >= 1.2
@@ -100,7 +122,8 @@ test-suite             vinyl-vectors-test
     , test-framework    >= 0.8
     , test-framework-hunit    
     , test-framework-quickcheck2
-    , vector >= 0.10 && < 0.12
+    , vector            >= 0.10 && < 0.12
+    , vinyl             >= 0.5.1 && < 0.6.0
 
 source-repository head
   type:     git

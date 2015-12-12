@@ -28,6 +28,7 @@ library
     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Mutable
 
+    , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join
@@ -41,23 +42,27 @@ library
 
     , Data.Vinyl.Named
     , Data.Vinyl.Arbitrary
+    , Data.Vinyl.Class.Implication
+
+    , Data.Dynamic.Constraint
   build-depends:       
       base              >= 4.7 && < 5
+    , QuickCheck        >= 2.8.0
     , bytestring
     , constraints       >= 0.4
+    , containers        >= 0.5.0
     , data-default      >= 0.5
+    , ghc-prim          >= 0.4.0.0
     , hybrid-vectors    >= 0.2.1
     , primitive         >= 0.6 && <0.7
-    , QuickCheck        >= 2.8.0
     , template-haskell  >= 2.5
     , text 
     , vector            >= 0.10 && < 0.12
     , vector-algorithms >= 0.6.0.0 && < 1.0
     , vinyl             >= 0.5.1 && < 0.5.2
-    , containers        >= 0.5.0
-    , ghc-prim          >= 0.4.0.0
   default-extensions:
     KindSignatures
+    StandaloneDeriving
     TypeOperators
     GADTs
     DataKinds

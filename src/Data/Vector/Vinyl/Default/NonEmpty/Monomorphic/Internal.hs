@@ -229,6 +229,33 @@ instance ( G.Vector Vector (Rec Identity (s ': rs))
   elemseq (V (VectorVal v :& vrs)) (Identity a :& rs) b = G.elemseq v a (G.elemseq (V vrs) rs b)
   {-# INLINE elemseq #-}
  
+
+instance (x ~ Rec Identity rs, Eq x, G.Vector Vector x) => Eq (Vector x) where
+  xs == ys = Stream.eq (G.stream xs) (G.stream ys)
+  {-# INLINE (==) #-}
+
+  xs /= ys = not (Stream.eq (G.stream xs) (G.stream ys))
+  {-# INLINE (/=) #-}
+
+
+instance (x ~ Rec Identity rs, Ord x, G.Vector Vector x) => Ord (Vector x) where
+  {-# INLINE compare #-}
+  compare xs ys = Stream.cmp (G.stream xs) (G.stream ys)
+
+  {-# INLINE (<) #-}
+  xs < ys = Stream.cmp (G.stream xs) (G.stream ys) == LT
+
+  {-# INLINE (<=) #-}
+  xs <= ys = Stream.cmp (G.stream xs) (G.stream ys) /= GT
+
+  {-# INLINE (>) #-}
+  xs > ys = Stream.cmp (G.stream xs) (G.stream ys) == GT
+
+  {-# INLINE (>=) #-}
+  xs >= ys = Stream.cmp (G.stream xs) (G.stream ys) /= LT
+
+
+
 -----------------------------------------
 -- Helper functions for instance methods
 -----------------------------------------
@@ -246,3 +273,5 @@ stripMV _ (MV rs) = rs
 stripV :: Vector (Rec Identity rs) -> Rec VectorVal rs
 stripV (V rs) = rs
 {-# INLINE stripV #-}
+
+

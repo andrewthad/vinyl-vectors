@@ -28,8 +28,14 @@ import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
+deriving instance Eq (DefaultVector t t) => Eq (VectorVal t)
+deriving instance Ord (DefaultVector t t) => Ord (VectorVal t)
+
 newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
 newtype DefaultBoxed a = DefaultBoxed { getDefaultBoxed :: a }
+  deriving (Eq,Ord)
+
+
 
 -- | The most efficient vector type for each column data type.
 class ( GM.MVector (G.Mutable (DefaultVector t)) t

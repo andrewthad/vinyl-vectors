@@ -15,15 +15,18 @@ import qualified Data.Vector.Hybrid.Mutable  as MHybrid
 import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal as Vinyl
 import qualified Data.List as List
 import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
-import Data.Vector.Vinyl.Default.Types (HasDefaultVector)
+import Data.Vector.Vinyl.Default.Types (HasDefaultVector,VectorVal)
 import Data.Vector.Vinyl.TypeLevel (ListAll)
 import Data.Vinyl.Core       (Rec(..))
 import Data.Vinyl.Functor    (Identity)
 import Data.Vinyl.TypeLevel  (RecAll)
+import Data.Vinyl.Class.Implication (listAllOrd)
 import Control.Monad.ST      (ST,runST)
 import Data.Primitive.MutVar (newMutVar, readMutVar, writeMutVar)
 import Control.Monad         (guard)
 import Data.Function         (on)
+import Data.Constraint
+import Data.Proxy            (Proxy(Proxy))
 
 defSort :: (PrimMonad m, GM.MVector v e, Ord e) => v (PrimState m) e -> m ()
 defSort = Merge.sort
@@ -58,6 +61,36 @@ fullJoinIndices as bs = do
   sortWithIndices ias
   sortWithIndices ibs
   matchingIndices ias ibs
+
+indexMany :: ( G.Vector v a ) => U.Vector Int -> v a -> v a
+indexMany 
+
+fullJoinIndicesImmutable :: 
+  ( G.Vector v a
+  , Ord a
+  )
+  => v a 
+  -> v a 
+  -> Hybrid.Vector U.Vector U.Vector (Int,Int)
+fullJoinIndicesImmutable as bs = runST $ do
+  mas <- G.thaw as
+  mbs <- G.thaw bs
+  r <- fullJoinIndices mas mbs
+  G.freeze r
+
+recFullJoinIndicesImmutable :: forall rs z zs.
+  ( ListAll rs Ord
+  , ListAll rs HasDefaultVector
+  -- , ListAll rs 
+  , rs ~ (z ': zs)
+  )
+  => Rec VectorVal rs
+  -> Rec VectorVal rs
+  -> Hybrid.Vector U.Vector U.Vector (Int,Int)
+recFullJoinIndicesImmutable as bs = 
+  case listAllOrd (Proxy :: Proxy Identity) as (Sub Dict) of
+    Sub Dict -> case listAllVector as of
+      Sub Dict -> fullJoinIndicesImmutable (Vinyl.V as) (Vinyl.V bs)
 
 -- The input vectors must already be sorted from
 -- low to high. Otherwise, this may crash.

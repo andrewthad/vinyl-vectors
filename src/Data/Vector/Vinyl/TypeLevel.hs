@@ -1,9 +1,9 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds      #-}
+{-# LANGUAGE GADTs          #-}
+{-# LANGUAGE TypeOperators  #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PolyKinds      #-}
+{-# LANGUAGE TypeFamilies   #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -27,7 +27,3 @@ type family ListAll (ts :: [k]) (c :: k -> Constraint) :: Constraint where
   ListAll '[] c = ()
   ListAll (t ': ts) c = (c t, ListAll ts c)
 
-data Sublist (super :: [k]) (sub :: [k]) where
-  SublistNil   :: Sublist '[] '[]
-  SublistSuper :: Sublist super sub -> Sublist (c ': super) sub
-  SublistBoth  :: Sublist super sub -> Sublist (c ': super) (c ': sub)

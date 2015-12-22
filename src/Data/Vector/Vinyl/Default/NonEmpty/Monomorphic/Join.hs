@@ -63,7 +63,11 @@ fullJoinIndices as bs = do
   matchingIndices ias ibs
 
 indexMany :: ( G.Vector v a ) => U.Vector Int -> v a -> v a
-indexMany 
+indexMany ixs xs = runST $ do
+  res <- GM.new (U.length ixs)
+  flip U.imapM_ ixs $ \i ix -> do
+    GM.write res i (xs G.! ix)
+  G.freeze res
 
 fullJoinIndicesImmutable :: 
   ( G.Vector v a

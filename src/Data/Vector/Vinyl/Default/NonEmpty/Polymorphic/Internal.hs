@@ -164,7 +164,7 @@ instance ( GM.MVector MVector (Rec f (s ': rs))
   {-# INLINE basicUnsafeGrow #-}
 
 #if MIN_VERSION_vector(0,11,0)
-  basicInitialize (MV (MVectorVal v :& rs)) = do
+  basicInitialize (MV (Compose (MVectorVal v) :& rs)) = do
     GM.basicInitialize v
     GM.basicInitialize (MV rs)
   {-# INLINE basicInitialize #-}

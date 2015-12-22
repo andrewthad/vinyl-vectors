@@ -44,9 +44,11 @@ library
     , Data.Vinyl.Arbitrary
     , Data.Vinyl.Class.Implication
 
+    , Data.Relation
     , Data.Dynamic.Constraint
+    , Data.List.TypeLevel
   build-depends:       
-      base              >= 4.7 && < 5
+      base              >= 4.7     && < 5
     , QuickCheck        >= 2.8.0
     , bytestring
     , constraints       >= 0.4
@@ -54,12 +56,14 @@ library
     , data-default      >= 0.5
     , ghc-prim          >= 0.4.0.0
     , hybrid-vectors    >= 0.2.1
-    , primitive         >= 0.6 && <0.7
+    , primitive         >= 0.6     && <0.7
     , template-haskell  >= 2.5
     , text 
-    , vector            >= 0.10 && < 0.12
+    , vector            >= 0.11    && < 0.12
     , vector-algorithms >= 0.6.0.0 && < 1.0
-    , vinyl             >= 0.5.1 && < 0.5.2
+    , vinyl             >= 0.5.1   && < 0.5.2
+    , transformers      >= 0.4.2   && < 0.5.0
+    , semigroups        >= 0.16
   default-extensions:
     KindSignatures
     StandaloneDeriving
@@ -79,21 +83,21 @@ library
   default-language:    Haskell2010
   ghc-options: -Wall -O2 
 
-executable sorting
-  if !flag(examples)
-    buildable: False
-  main-is: sorting.hs
-  if flag(examples)
-    build-depends: 
-        vinyl-vectors
-      , base              >= 4.7 && < 5.0
-      , vector-algorithms >= 0.6.0.0 && < 1.0
-      , text              >= 0.8.0.0
-      , vinyl             >= 0.5.1 && < 0.6.0
-      , microlens         >= 0.1
-  hs-source-dirs: examples
-  default-language: Haskell2010
-  ghc-options: -O2
+-- executable sorting
+--   if !flag(examples)
+--     buildable: False
+--   main-is: sorting.hs
+--   if flag(examples)
+--     build-depends: 
+--         vinyl-vectors
+--       , base              >= 4.7 && < 5.0
+--       , vector-algorithms >= 0.6.0.0 && < 1.0
+--       , text              >= 0.8.0.0
+--       , vinyl             >= 0.5.1 && < 0.6.0
+--       , microlens         >= 0.1
+--   hs-source-dirs: examples
+--   default-language: Haskell2010
+--   ghc-options: -O2
 
 executable joining
   if !flag(examples)
@@ -106,6 +110,22 @@ executable joining
       , vector            >= 0.10 
       , base              >= 4.7 && < 5.0
       , text              >= 0.8.0.0
+  hs-source-dirs: examples
+  default-language: Haskell2010
+  ghc-options: -O2
+
+executable query
+  if !flag(examples)
+    buildable: False
+  main-is: query.hs
+  if flag(examples)
+    build-depends: 
+        vinyl-vectors
+      , vinyl             >= 0.5.1
+      , base              >= 4.7 && < 5.0
+      , text              >= 0.8.0.0
+      , vector            >= 0.10 && < 0.12
+      , constraints       >= 0.4
   hs-source-dirs: examples
   default-language: Haskell2010
   ghc-options: -O2

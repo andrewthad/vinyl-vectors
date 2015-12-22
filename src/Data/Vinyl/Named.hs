@@ -19,13 +19,24 @@ import Data.Vinyl.Functor    (Identity)
 import Test.QuickCheck.Arbitrary
 import GHC.Exts (Constraint)
 import Data.Vector.Vinyl.Default.Types (VectorVal(..),HasDefaultVector(..))
-import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (recFullJoinIndicesImmutable)
+import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (indexMany, recFullJoinIndicesImmutable)
 import Data.Type.Equality ((:~:)(Refl))
 import qualified Data.Vector.Hybrid  as Hybrid
 import qualified Data.Vector.Unboxed as U
 import Data.Constraint
 
+data DictFun (c :: k -> Constraint) (a :: k) where
+  DictFun :: Dict (c a) -> DictFun c a
+
+dictFunOf :: Proxy c -> Dict (c a) -> DictFun c a
+dictFunOf _ d = DictFun d
+
+reifyDictFun :: ListAll rs c => proxy1 c -> Rec proxy2 rs -> Rec (DictFun c) rs
+reifyDictFun _ RNil = RNil
+reifyDictFun p (_ :& rs) = DictFun Dict :& reifyDictFun p rs
+
 data NamedType a = NamedType Symbol a
+data PairNamedType a = PairNamedType Symbol Symbol a
 
 newtype NamedValue (a :: NamedType *) = NamedValue { getNamedValue :: NamedTypeValue a }
   deriving Typeable
@@ -62,7 +73,7 @@ class KnownSymbol (NamedTypeKey t) => NamedTypeKnownSymbol (t :: NamedType *)
 instance KnownSymbol (NamedTypeKey t) => NamedTypeKnownSymbol (t :: NamedType *)
 
 class Typeable (NamedTypeValue t) => NamedTypeTypeable (t :: NamedType *)
-instance  Typeable (NamedTypeValue t) => NamedTypeTypeable (t :: NamedType *)
+instance Typeable (NamedTypeValue t) => NamedTypeTypeable (t :: NamedType *)
 
 class (ca x, cb x) => (ca :&: cb) x
 instance (ca x, cb x) => (ca :&: cb) x
@@ -165,31 +176,37 @@ type JoinConstraints r =
 
 data HiddenVector where
   HiddenVector :: forall (a :: *). 
-    JoinConstraints a => VectorVal a -> HiddenVector
+    JoinConstraints a => 
+    VectorVal a -> HiddenVector
 
 data HiddenRec (f :: * -> *) where
   HiddenRec :: forall (rs :: [*]) (f :: * -> *). 
-    ListAllJoinConstraints rs => Rec f rs -> HiddenRec f
+    ListAllJoinConstraints rs => 
+    Rec f rs -> HiddenRec f
 
 data ConstrainedHiddenRec (f :: * -> *) (c :: * -> Constraint) where
   ConstrainedHiddenRec :: RecAll f rs c => Rec f rs -> ConstrainedHiddenRec f c
 
 -- This only works if `rs` does not contain duplicate names
 indexedHiddenVectorMapsToRec :: forall (rs :: [NamedType *]) proxy.
+  ( NamedTypeKeysAll rs KnownSymbol
+  , NamedTypeValuesAll rs Typeable
+  , NamedTypeValuesAll rs HasDefaultVector
+  )
   => Rec proxy rs
   -> [(U.Vector Int, Map String HiddenVector)]
   -> Rec (Named VectorVal) rs
-indexedHiddenVectorMapsToRec RNil xs = if and (map Map.null m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
-indexedHiddenVectorMapsToRec ((_ :: proxy r) :& rs) = case lookupHelper keyStr of
-  (i,HiddenVector (v :: VectorVal a), mnext) -> case (eqT :: Maybe (NamedTypeValue r :~: a)) of
-    Just Refl -> Named 
+indexedHiddenVectorMapsToRec RNil m = if and (map (Map.null . snd) m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
+indexedHiddenVectorMapsToRec ((_ :: proxy r) :& rs) m = case lookupHelper keyStr m of
+  (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (NamedTypeValue r :~: a)) of
+    Just Refl -> Named (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec rs mnext
     Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
   where 
   keyStr = (symbolVal (Proxy :: Proxy (NamedTypeKey r)))
 
--- unchecked
+-- unchecked, still needs to be written
 lookupHelper :: String -> [(a, Map String b)] -> (a,b,[(a,Map String b)])
-lookupHelper = error "write me"
+lookupHelper = error "lookupHelper: write me"
 
 
 hiddenVectorMapToRec :: forall rs m proxy.
@@ -288,6 +305,19 @@ zipNames :: forall f proxy ks vs. RecApplicative ks
   => proxy ks -> Rec f vs -> Rec (Named f) (ZipNames ks vs)
 zipNames _ = zipNamesExplicit (rpure Proxy :: Rec Proxy ks)
 
+class RecApplicativeConstrained (c :: k -> Constraint) (rs :: [k]) where
+  rpureConstrained :: Proxy c -> (forall x. c x => f x) -> Rec f rs
+instance RecApplicativeConstrained c '[] where
+  rpureConstrained _ _ = RNil
+instance (RecApplicativeConstrained c rs, c r) => RecApplicativeConstrained c (r ': rs) where
+  rpureConstrained p s = s :& rpureConstrained p s
+
+-- rpureConstrained :: RecApplicative rs => Proxy c -> (forall x. c x => f x) -> Rec f rs
+-- rpureConstrained _ f = rpureConstrained' f (rpure (DictFun Dict))
+
+rpureConstrained' :: (forall x. c x => f x) -> Rec (DictFun c) rs -> Rec f rs
+rpureConstrained' _ RNil = RNil
+rpureConstrained' f (DictFun Dict :& rs) = f :& rpureConstrained' f rs
 
 -- data NamedValue (a :: NamedType *) where
 --   NamedValue :: val -> NamedValue ('NamedType key val)

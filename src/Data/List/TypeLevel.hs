@@ -54,22 +54,30 @@ instance (KnownSymbol (NamedTypeKey s), Typeable (NamedTypeValue s)) => IsNamedT
   ntName _ = symbolVal (Proxy :: Proxy (NamedTypeKey s))
   ntType _ = typeRep (Proxy :: Proxy (NamedTypeValue s))
 
-data CmpFun           :: * -> *
-data SymSymbol        :: CmpFun Symbol -> *
-data SymNamedType     :: CmpFun (NamedType *) -> *
-data SymPairNamedType :: CmpFun (PairNamedType *) -> *
+instance  (KnownSymbol key, Typeable val) => IsNamedType ('NamedTypeOf key val) where
+  ntName _ = symbolVal (Proxy :: Proxy key)
+  ntType _ = typeRep (Proxy :: Proxy val)
+
+data CmpFun               :: * -> *
+data SymSymbol            :: CmpFun Symbol -> *
+data SymNamedTypeOfSymbol :: CmpFun (NamedTypeOf Symbol *) -> *
+data SymNamedType         :: CmpFun (NamedType *) -> *
+data SymPairNamedType     :: CmpFun (PairNamedType *) -> *
 
 -- data EqFun          :: * -> *
 -- data SymNamedTypeEq :: EqFun (NamedType *) -> *
 
 type family ApplyCmp (f :: CmpFun k -> *) (a :: k) (b :: k) :: Ordering
 type instance ApplyCmp SymNamedType ('NamedType name1 typ1) ('NamedType name2 typ2) = CmpSymbol name1 name2
+type instance ApplyCmp SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) ('NamedTypeOf name2 typ2) = CmpSymbol name1 name2
 
 type family ApplyType (f :: CmpFun k -> *) (a :: k) :: *
 type instance ApplyType SymNamedType ('NamedType name1 typ1) = typ1
+type instance ApplyType SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = typ1
 
 type family ApplyKey (f :: CmpFun k -> *) (a :: k) :: n
 type instance ApplyKey SymNamedType ('NamedType name1 typ1) = name1
+type instance ApplyKey SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = name1
 
 -- | First element of a type pair.
 type family Fst k where
@@ -135,6 +143,17 @@ instance {-# OVERLAPPABLE #-} ImplicitSublist super sub => ImplicitSublist (s ':
 instance {-# OVERLAPPING #-} ImplicitSublist super sub => ImplicitSublist (s ': super) (s ': sub) where
   implicitSublist = SublistBoth (implicitSublist :: Sublist super sub)
 
+-- This type family is partial. Both lists should be ordered.
+type family SublistLookupMany (super :: [NamedTypeOf k v]) (sub :: [k]) where
+  SublistLookupMany xs '[] = '[]
+  SublistLookupMany ('NamedTypeOf k v ': xs) (k ': ks) = 'NamedTypeOf k v ': SublistLookupMany xs ks
+  SublistLookupMany ('NamedTypeOf k v ': xs) (j ': ks) = SublistLookupMany xs (j ': ks)
+
+-- This type family is partial.
+type family SublistLookup (super :: [NamedTypeOf k v]) (sub :: k) :: v where
+  SublistLookup ('NamedTypeOf k v ': xs) k = v
+  SublistLookup ('NamedTypeOf k v ': xs) j = SublistLookup xs j
+
 implicitSublistSub :: ImplicitSublist super sub => Proxy sub -> Sublist super sub
 implicitSublistSub _ = implicitSublist
 
@@ -161,9 +180,17 @@ applyCmpString _ a b = case compare (ntName a) (ntName b) of
   GT -> unsafeCoerce GTy
 
 -- uses unsafe coerce but it actually safe
-applyCmpTransitive :: Proxy f -> Proxy a -> Proxy b -> Proxy c
+applyCmpTransitive :: proxy1 f -> proxy2 a -> proxy3 b -> proxy4 c
   -> (ApplyCmp f a b ~ r, ApplyCmp f b c ~ r) :- (ApplyCmp f a c ~ r)
 applyCmpTransitive _ _ _ _ = unsafeCoerceConstraint
+
+invertLt :: proxy1 f -> proxy2 a -> proxy3 b
+  -> (ApplyCmp f a b ~ LT) :- (ApplyCmp f b a ~ GT)
+invertLt _ _ _ = unsafeCoerceConstraint
+
+invertGt :: proxy1 f -> proxy2 a -> proxy3 b
+  -> (ApplyCmp f a b ~ GT) :- (ApplyCmp f b a ~ LT)
+invertGt _ _ _ = unsafeCoerceConstraint
 
 -- uses unsafe coerce but it actually safe
 ntEqT :: forall a b proxy1 proxy2. (IsNamedType a, IsNamedType b) => proxy1 a -> proxy2 b -> Maybe (a :~: b)
@@ -178,6 +205,8 @@ ordRec :: OrdList f rs -> Rec Proxy rs
 ordRec OrdListNil = RNil
 ordRec OrdListSingle = Proxy :& RNil
 ordRec (OrdListCons onext) = Proxy :& ordRec onext
+
+
 
 ordSublist :: Sublist super sub -> OrdList f super -> OrdList f sub
 ordSublist = go
@@ -198,7 +227,21 @@ ordSublist = go
         Right Refl -> OrdListCons ores
         Left ApplyCmpRes -> case applyCmpTransitive (Proxy :: Proxy f) (listHeadProxy ordList) (listHead2Proxy ordList) (listHeadProxy ores) of
           Sub Dict -> OrdListCons ores
-    
+
+type family Head (xs :: [k]) :: k where
+  Head (x ': xs) = x
+type family Tail (xs :: [k]) :: [k] where
+  Tail (x ': xs) = xs
+
+typeListHead :: forall x xs proxy. proxy (x ': xs) -> Proxy x
+typeListHead _ = Proxy
+
+sublistSuperProxy :: forall super sub. Sublist super sub -> Proxy super
+sublistSuperProxy _ = Proxy
+
+sublistSubProxy :: forall super sub. Sublist super sub -> Proxy sub
+sublistSubProxy _ = Proxy
+
 sublistHeadGte :: Sublist (superHead ': super) (subHead ': sub) 
                -> OrdList f (superHead ': super) 
                -> Either (ApplyCmpRes f superHead subHead 'GT) (superHead :~: subHead)
@@ -226,4 +269,104 @@ type family Union (f :: CmpFun k -> *) (a :: [k]) (b :: [k]) :: [k] where
       (b ': Union f (a ': as) bs)
       (ApplyEq f a b (a ': Union f as bs))
       (a ': Union f as (b ': bs))
+
+unionSublist :: Proxy f
+  -> Rec (DictFun IsNamedType) superA -> Rec (DictFun IsNamedType) superB
+  -> OrdList f superA -> OrdList f superB
+  -> Sublist superA subA -> Sublist superB subB
+  -> Sublist (Union f superA superB) (Union f subA subB)
+unionSublist = go
+  where
+  go :: forall f superA subA superB subB. 
+       Proxy f 
+    -> Rec (DictFun IsNamedType) superA 
+    -> Rec (DictFun IsNamedType) superB
+    -> OrdList f superA
+    -> OrdList f superB
+    -> Sublist superA subA 
+    -> Sublist superB subB
+    -> Sublist (Union f superA superB) (Union f subA subB)
+  go _ RNil RNil OrdListNil OrdListNil SublistNil SublistNil = SublistNil
+  go p (_ :& dls) RNil olnext OrdListNil s SublistNil = case s of
+    SublistBoth snext -> SublistBoth 
+      (go p dls RNil (ordListTail olnext) OrdListNil snext SublistNil)
+    SublistSuper snext -> SublistSuper 
+      (go p dls RNil (ordListTail olnext) OrdListNil snext SublistNil)
+  go p RNil (_ :& drs) OrdListNil ornext SublistNil s = case s of
+    SublistBoth snext -> SublistBoth 
+      (go p RNil drs OrdListNil (ordListTail ornext) SublistNil snext)
+    SublistSuper snext -> 
+      SublistSuper (go p RNil drs OrdListNil (ordListTail ornext) SublistNil snext)
+  go p dls@(dl@(DictFun Dict) :& dlsNext) drs@(dr@(DictFun Dict) :& drsNext) olnext ornext subl subr = case subl of
+    SublistBoth slnext -> case subr of
+      SublistBoth srnext -> case applyCmpString p dl dr of
+        LTy -> SublistBoth (go p dls drsNext olnext (ordListTail ornext) subl srnext)
+        GTy -> SublistBoth (go p dlsNext drs (ordListTail olnext) ornext slnext subr)
+        EQy -> case ntEqT dl dr of
+          Just Refl -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext)
+          Nothing -> error "unionSublist: impossible case"
+      SublistSuper srnext -> case applyCmpString p dl dr of
+        LTy -> SublistSuper (go p dls drsNext olnext (ordListTail ornext) subl srnext)
+        GTy -> case sublistHeadProof2 dl (Left Dict) subr ornext of 
+          Right Dict -> SublistBoth (go p dlsNext drs (ordListTail olnext) ornext slnext subr)
+          Left Dict -> SublistBoth (go p dlsNext drs (ordListTail olnext) ornext slnext subr)
+        EQy -> case ntEqT dl dr of
+          Just Refl -> case srnext of
+            SublistNil -> case sublistHeadProof2 dl (Right Dict) srnext (ordListTail ornext) of
+              Right Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+            SublistSuper _ -> case ornext of
+              OrdListCons _ -> case sublistHeadProof2 dl (Left Dict) srnext (ordListTail ornext) of
+                Left Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+            SublistBoth _ -> case ornext of
+              OrdListCons _ -> case sublistHeadProof2 dl (Left Dict) srnext (ordListTail ornext) of
+                Left Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+          Nothing -> error "unionSublist: impossible case"
+    SublistSuper slnext -> case subr of
+      SublistSuper srnext -> case applyCmpString p dl dr of
+        LTy -> SublistSuper (go p dls drsNext olnext (ordListTail ornext) subl srnext)
+        GTy -> SublistSuper (go p dlsNext drs (ordListTail olnext) ornext slnext subr)
+        EQy -> case ntEqT dl dr of
+          Just Refl -> SublistSuper (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext)
+          Nothing -> error "unionSublist: impossible case"
+      SublistBoth srnext -> case applyCmpString p dl dr of
+        LTy -> case invertLt p dl dr of
+          Sub Dict -> case sublistHeadProof2 dr (Left Dict) subl olnext of
+            Right Dict -> SublistBoth (go p dls drsNext olnext (ordListTail ornext) subl srnext)
+            Left Dict -> case invertGt p dr (typeListHead (sublistSubProxy subl)) of
+              Sub Dict -> SublistBoth (go p dls drsNext olnext (ordListTail ornext) subl srnext)
+        GTy -> SublistSuper (go p dlsNext drs (ordListTail olnext) ornext slnext subr)
+        EQy -> case ntEqT dl dr of
+          Just Refl -> case slnext of
+            SublistNil -> case sublistHeadProof2 dr (Right Dict) slnext (ordListTail olnext) of
+              Right Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+            SublistSuper _ -> case olnext of
+              OrdListCons _ -> case sublistHeadProof2 dr (Left Dict) slnext (ordListTail olnext) of
+                Left Dict -> case invertGt p dr (typeListHead (sublistSubProxy subl)) of
+                  Sub Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+            SublistBoth _ -> case olnext of
+              OrdListCons _ -> case sublistHeadProof2 dr (Left Dict) slnext (ordListTail olnext) of
+                Left Dict -> case invertGt p dr (typeListHead (sublistSubProxy subl)) of
+                  Sub Dict -> SublistBoth (go p dlsNext drsNext (ordListTail olnext) (ordListTail ornext) slnext srnext) 
+          Nothing -> error "unionSublist: impossible case"
+        
+sublistHeadProof2 :: forall proxy el f super sub superHead superOther.
+                     proxy el
+                  -> Either (Dict (super ~ (superHead ': superOther), ApplyCmp f el superHead ~ 'GT)) (Dict (super ~ '[]))
+                  -> Sublist super sub
+                  -> OrdList f super
+                  -> Either (Dict ( sub ~ (Head sub ': Tail sub)
+                                  , ApplyCmp f el (Head sub) ~ 'GT
+                                  )
+                            ) 
+                            (Dict (sub ~ '[]))
+sublistHeadProof2 el e sublist ordlist = case e of
+  Left Dict -> case sublist of
+    SublistBoth snext -> Left Dict
+    SublistSuper snext -> case ordlist of
+      OrdListSingle -> case snext of
+        SublistNil -> Right Dict
+      OrdListCons ordlistNext -> case applyCmpTransitive (Proxy :: Proxy f) el (typeListHead (sublistSuperProxy sublist)) (typeListHead (sublistSuperProxy snext)) of 
+        Sub Dict -> sublistHeadProof2 el (Left Dict) snext ordlistNext
+  Right Dict -> case sublist of
+    SublistNil -> Right Dict
 

@@ -47,6 +47,7 @@ library
     , Data.Relation
     , Data.Dynamic.Constraint
     , Data.List.TypeLevel
+    , Data.Proxy.TH
   build-depends:       
       base              >= 4.7     && < 5
     , QuickCheck        >= 2.8.0

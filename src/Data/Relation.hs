@@ -28,16 +28,17 @@ data UTable = UTable
   , utColumns :: Set Col
   }
 
-data Pred (f :: CmpFun k -> *) (rs :: [k]) where
+data Pred (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
   PredNot     :: Pred f rs -> Pred f rs
   PredOr      :: Sublist cs as -> Sublist cs bs 
               -> Pred f as -> Pred f bs -> Pred f cs
   PredAnd     :: Sublist cs as -> Sublist cs bs
               -> Pred f as -> Pred f bs -> Pred f cs
-  PredEqValue :: ApplyType f r -> Pred f '[r]
-  PredEqCol   :: OrdList f '[n,m] -> Pred f '[n,m]
+  PredEqValue :: val -> Pred f '[ 'NamedTypeOf key val]
+  PredEqCol   :: OrdList f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
+              -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
 
-data RelOp (f :: CmpFun k -> *) (rs :: [k]) where
+data RelOp (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
   RelTable    :: ListAll rs IsNamedType
               => String
               -> OrdList f rs 
@@ -47,11 +48,57 @@ data RelOp (f :: CmpFun k -> *) (rs :: [k]) where
   RelRestrict :: Sublist super sub -> Pred f sub -> RelOp f super -> RelOp f super
   RelProject  :: Sublist super sub -> RelOp f super -> RelOp f sub
 
-valEq :: Proxy (ApplyKey f r) -> ApplyType f r -> Pred f '[r]
+valEq :: Proxy key -> val -> Pred f '[ 'NamedTypeOf key val]
 valEq _ v = PredEqValue v
+
+colEq :: ApplyCmp f ('NamedTypeOf key1 val) ('NamedTypeOf key2 val) ~ GT
+  => Proxy val -> Proxy key1 -> Proxy key2 -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val]
+colEq _ _ _ = PredEqCol (OrdListCons OrdListSingle)
+
+project :: forall sub subKeys super f. 
+     (sub ~ SublistLookupMany super subKeys, ImplicitSublist super sub)
+  => Proxy subKeys -> RelOp f super -> RelOp f sub
+project _ relOp = RelProject (implicitSublist :: Sublist super sub) relOp
 
 restrict :: ImplicitSublist super sub => Pred f sub -> RelOp f super -> RelOp f super
 restrict pred relOp = RelRestrict implicitSublist pred relOp
+
+equijoin :: forall f ls rs name1 name2 v.
+  ( ImplicitSublist ls '[ 'NamedTypeOf name1 v]
+  , ImplicitSublist rs '[ 'NamedTypeOf name2 v]
+  , v ~ SublistLookup rs name2
+  )
+  => Proxy name1 -> Proxy name2 -> RelOp f ls 
+  -> RelOp f rs -> RelOp f (Union f ls rs)
+equijoin _ _ = equijoinExplicit 
+  (implicitSublist :: Sublist ls '[ 'NamedTypeOf name1 v])
+  (implicitSublist :: Sublist rs '[ 'NamedTypeOf name2 v])
+
+equijoinExplicit :: forall ls rs name1 name2 v f.
+     Sublist ls '[ 'NamedTypeOf name1 v] 
+  -> Sublist rs '[ 'NamedTypeOf name2 v] 
+  -> RelOp f ls -> RelOp f rs -> RelOp f (Union f ls rs)
+equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
+  (DictFun Dict, DictFun Dict) -> case applyCmpString fProxy lDict rDict of
+    LTy -> error "lt... hmmm"
+    GTy -> RelRestrict 
+      (unionSublist fProxy 
+        (relOpTypes ls) 
+        (relOpTypes rs) 
+        (relOpOrdered ls)
+        (relOpOrdered rs)
+        subLs subRs
+      )
+      (PredEqCol (OrdListCons OrdListSingle)) (RelJoin ls rs)
+    EQy -> error "hmmm"
+  where
+  fProxy = Proxy :: Proxy f
+  lDict :: DictFun IsNamedType ('NamedTypeOf name1 v)
+  lDict = case projectRec subLs (relOpTypes ls) of
+    d :& RNil -> d
+  rDict :: DictFun IsNamedType ('NamedTypeOf name2 v)
+  rDict = case projectRec subRs (relOpTypes rs) of
+    d :& RNil -> d
 
 relOpOrdered :: forall f rs. RelOp f rs -> OrdList f rs
 relOpOrdered = go

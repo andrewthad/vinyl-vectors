@@ -35,6 +35,7 @@ reifyDictFun :: ListAll rs c => proxy1 c -> Rec proxy2 rs -> Rec (DictFun c) rs
 reifyDictFun _ RNil = RNil
 reifyDictFun p (_ :& rs) = DictFun Dict :& reifyDictFun p rs
 
+data NamedTypeOf key val = NamedTypeOf key val
 data NamedType a = NamedType Symbol a
 data PairNamedType a = PairNamedType Symbol Symbol a
 

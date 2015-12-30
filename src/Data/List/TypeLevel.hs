@@ -14,6 +14,10 @@ import Unsafe.Coerce (unsafeCoerce)
 import Data.Typeable
 import Data.Vector.Vinyl.Default.Types (HasDefaultVector)
 
+implicitDictFun :: ListAll rs c => proxy c -> Rec proxy2 rs -> Rec (DictFun c) rs
+implicitDictFun _ RNil = RNil
+implicitDictFun c (_ :& rs) = DictFun Dict :& implicitDictFun c rs
+
 projectRec :: Sublist super sub -> Rec f super -> Rec f sub
 projectRec s r = case s of
   SublistNil -> RNil
@@ -39,46 +43,6 @@ unionRec p ls@(l@(DictFun Dict) :& lsNext) rs@(r@(DictFun Dict) :& rsNext) = cas
 ordListDict :: ListAll rs c => Proxy c -> OrdList f rs -> Rec (DictFun c) rs
 ordListDict p ordList = reifyDictFun p (ordRec ordList)
 
-newtype NamedWith (g :: CmpFun k -> *) (f :: * -> *) (a :: k) = 
-  NamedWith { getNamedWith :: f (ApplyType g a)}
-
-class HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
-instance HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
-
-
-class IsNamedType t where
-  ntName :: proxy t -> String
-  ntType :: proxy t -> TypeRep
-   
-instance (KnownSymbol (NamedTypeKey s), Typeable (NamedTypeValue s)) => IsNamedType (s :: NamedType *) where
-  ntName _ = symbolVal (Proxy :: Proxy (NamedTypeKey s))
-  ntType _ = typeRep (Proxy :: Proxy (NamedTypeValue s))
-
-instance  (KnownSymbol key, Typeable val) => IsNamedType ('NamedTypeOf key val) where
-  ntName _ = symbolVal (Proxy :: Proxy key)
-  ntType _ = typeRep (Proxy :: Proxy val)
-
-data CmpFun               :: * -> *
-data SymSymbol            :: CmpFun Symbol -> *
-data SymNamedTypeOfSymbol :: CmpFun (NamedTypeOf Symbol *) -> *
-data SymNamedType         :: CmpFun (NamedType *) -> *
-data SymPairNamedType     :: CmpFun (PairNamedType *) -> *
-
--- data EqFun          :: * -> *
--- data SymNamedTypeEq :: EqFun (NamedType *) -> *
-
-type family ApplyCmp (f :: CmpFun k -> *) (a :: k) (b :: k) :: Ordering
-type instance ApplyCmp SymNamedType ('NamedType name1 typ1) ('NamedType name2 typ2) = CmpSymbol name1 name2
-type instance ApplyCmp SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) ('NamedTypeOf name2 typ2) = CmpSymbol name1 name2
-
-type family ApplyType (f :: CmpFun k -> *) (a :: k) :: *
-type instance ApplyType SymNamedType ('NamedType name1 typ1) = typ1
-type instance ApplyType SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = typ1
-
-type family ApplyKey (f :: CmpFun k -> *) (a :: k) :: n
-type instance ApplyKey SymNamedType ('NamedType name1 typ1) = name1
-type instance ApplyKey SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = name1
-
 -- | First element of a type pair.
 type family Fst k where
     Fst '(a,b) = a
@@ -91,6 +55,8 @@ type ApplyEq f a b k = EqStar (ApplyType f a) (ApplyType f b) k
 
 type family EqStar (a :: *) (b :: *) (r :: k) :: k where
   EqStar a a k = k
+  -- EqStar a b k = Error "Types must match"
+  -- second case requires https://ghc.haskell.org/trac/ghc/ticket/9637
 
 -- type family ApplyEq (f :: EqFun k -> *) (a :: k) (b :: k) :: Constraint
 -- type instance ApplyEq SymNamedTypeEq ('NamedType name1 typ1) ('NamedType name2 typ2) = typ1 ~ typ2
@@ -104,6 +70,14 @@ data OrdList (f :: CmpFun k -> *) (cs :: [k]) where
   OrdListCons   :: ( ApplyCmp f x y ~ GT )
     => OrdList f (y ': cs) 
     -> OrdList f (x ': y ': cs)
+
+ordListLength :: OrdList f rs -> Int
+ordListLength = go
+  where
+  go :: forall g a. OrdList g a -> Int
+  go OrdListNil = 0
+  go OrdListSingle = 1
+  go (OrdListCons s) = 1 + go s
 
 --------------------
 -- Implicit OrdList 
@@ -127,6 +101,38 @@ data Sublist (super :: [k]) (sub :: [k]) where
   SublistNil   :: Sublist '[] '[]
   SublistSuper :: Sublist super sub -> Sublist (c ': super) sub
   SublistBoth  :: Sublist super sub -> Sublist (c ': super) (c ': sub)
+
+sublistSuperToRec :: Sublist super sub -> Rec Proxy super
+sublistSuperToRec = go
+  where
+  go :: forall a b. Sublist a b -> Rec Proxy a
+  go SublistNil = RNil
+  go (SublistSuper s) = Proxy :& go s
+  go (SublistBoth s) = Proxy :& go s
+
+sublistSubToRec :: Sublist super sub -> Rec Proxy sub
+sublistSubToRec = go
+  where
+  go :: forall a b. Sublist a b -> Rec Proxy b
+  go SublistNil = RNil
+  go (SublistSuper s) = go s
+  go (SublistBoth s) = Proxy :& go s
+
+sublistSuperLength :: Sublist super sub -> Int
+sublistSuperLength = go
+  where
+  go :: forall a b. Sublist a b -> Int
+  go SublistNil = 0
+  go (SublistSuper s) = 1 + go s
+  go (SublistBoth s) = 1 + go s
+
+sublistSubLength :: Sublist super sub -> Int
+sublistSubLength = go
+  where
+  go :: forall a b. Sublist a b -> Int
+  go SublistNil = 0
+  go (SublistSuper s) = go s
+  go (SublistBoth s) = 1 + go s
 
 --------------------
 -- Implicit Sublist
@@ -264,11 +270,18 @@ type family Union (f :: CmpFun k -> *) (a :: [k]) (b :: [k]) :: [k] where
   Union f '[] '[] = '[]
   Union f '[] (b ': bs) = b ': Union f '[] bs 
   Union f (a ': as) '[] = a ': Union f as '[]
-  Union f (a ': as) (b ': bs) = 
-    IfOrd (ApplyCmp f a b)
-      (b ': Union f (a ': as) bs)
-      (ApplyEq f a b (a ': Union f as bs))
-      (a ': Union f as (b ': bs))
+  Union f (a ': as) (b ': bs) = UnionCmp (ApplyCmp f a b) f a as b bs
+  -- Union f (a ': as) (b ': bs) = 
+  --   IfOrd (ApplyCmp f a b)
+  --     (b ': Union f (a ': as) bs)
+  --     (ApplyEq f a b (a ': Union f as bs))
+  --     (a ': Union f as (b ': bs))
+
+type family UnionCmp (o :: Ordering) (f :: CmpFun k -> *) (a :: k) (as :: [k]) (b :: k) (bs :: [k]) where
+  UnionCmp LT f a as b bs = b ': Union f (a ': as) bs
+  UnionCmp EQ f a as b bs = a ': Union f as bs
+  UnionCmp GT f a as b bs = a ': Union f as (b ': bs)
+
 
 unionSublist :: Proxy f
   -> Rec (DictFun IsNamedType) superA -> Rec (DictFun IsNamedType) superB

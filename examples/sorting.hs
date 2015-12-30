@@ -24,10 +24,10 @@ import qualified Data.Vector.Algorithms.Merge as Merge
 --
 --   stack build --flag vinyl-vectors:examples && stack exec sorting
 --
--- In this example, we build a vector of records. Internally, this is stored
--- as a structure of arrays. We then use the vector-algorithms to sort the
--- data by several different criteria. Feel free to increase the number of
--- elements to a million or change the record type. Have fun.
+-- In this example, we build a vector of records. Internally, this is
+-- stored as a structure of arrays. We then use the vector-algorithms to
+-- sort the data by several different criteria. Feel free to increase the
+-- number of elements to a million or change the record type. Have fun.
 
 numberOfElements :: Int
 numberOfElements = 20

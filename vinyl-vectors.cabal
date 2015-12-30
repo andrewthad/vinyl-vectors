@@ -47,6 +47,7 @@ library
     , Data.Relation
     , Data.Dynamic.Constraint
     , Data.List.TypeLevel
+    , Data.List.Symbol
     , Data.Proxy.TH
   build-depends:       
       base              >= 4.7     && < 5
@@ -65,6 +66,7 @@ library
     , vinyl             >= 0.5.1   && < 0.5.2
     , transformers      >= 0.4.2   && < 0.5.0
     , semigroups        >= 0.16
+    , fgl
   default-extensions:
     KindSignatures
     StandaloneDeriving
@@ -107,10 +109,10 @@ executable joining
   if flag(examples)
     build-depends: 
         vinyl-vectors
-      , hybrid-vectors    >= 0.2.1
-      , vector            >= 0.10 
       , base              >= 4.7 && < 5.0
+      , hybrid-vectors    >= 0.2.1
       , text              >= 0.8.0.0
+      , vector            >= 0.10 
   hs-source-dirs: examples
   default-language: Haskell2010
   ghc-options: -O2
@@ -127,6 +129,31 @@ executable query
       , text              >= 0.8.0.0
       , vector            >= 0.10 && < 0.12
       , constraints       >= 0.4
+  hs-source-dirs: examples
+  default-language: Haskell2010
+  ghc-options: -O2 -ddump-tc -ddump-parsed
+
+executable sublist
+  if !flag(examples)
+    buildable: False
+  main-is: sublist.hs
+  if flag(examples)
+    build-depends: 
+        vinyl-vectors
+      , base              >= 4.7 && < 5.0
+      , text              >= 0.8.0.0
+  hs-source-dirs: examples
+  default-language: Haskell2010
+  ghc-options: -O0
+
+executable symbol
+  if !flag(examples)
+    buildable: False
+  main-is: symbol.hs
+  if flag(examples)
+    build-depends: 
+        vinyl-vectors
+      , base              >= 4.7 && < 5.0
   hs-source-dirs: examples
   default-language: Haskell2010
   ghc-options: -O2

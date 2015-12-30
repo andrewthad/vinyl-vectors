@@ -7,26 +7,57 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Set as Set
 import qualified Data.List as List
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Typeable (Typeable,TypeRep)
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic as R
+import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (indexManyPredicate)
+import Data.Typeable (Typeable,TypeRep,typeRep)
 import Control.Monad.Trans.Writer.Strict (Writer,tell,runWriter)
 import Data.Monoid (Any(..))
 import qualified GHC.Prim as Prim
 import Data.Vinyl.Named
 import GHC.TypeLits (CmpSymbol)
 import Data.List.TypeLevel 
-import Data.Vector.Vinyl.Default.Types (VectorVal)
+import Data.Vector.Vinyl.Default.Types (VectorVal(..))
 import Data.Proxy (Proxy(..))
 import Data.Vinyl.Core (Rec(..))
 import Data.Vector.Vinyl.TypeLevel
 import Data.Constraint
+import qualified Data.Graph.Inductive.Tree as Patricia
+-- import qualified Data.Graph.Inductive.PatriciaTree as Patricia
+import qualified Data.Graph.Inductive.Graph as Graph
+import Control.Monad.Trans.State
+import Control.Arrow (first, second)
+import Data.Map (Map)
+import Data.Vector.Vinyl.Default.Types (HasDefaultVector)
+import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector.Generic as G
+import qualified Data.Map.Strict as Map
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype Col = Col { getCol :: String }
-  deriving (Eq,Ord)
+  deriving (Eq,Ord,Show)
+data NullRelArity = NullRelOne | NullRelZero
 
 data UTable = UTable
   { utName    :: String
   , utColumns :: Set Col
+  , utData    :: Either NullRelArity (Map Col HiddenVector)
   }
+
+data Relation (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
+  RelationNull    :: NullRelArity -> Relation f '[]
+  RelationPresent :: Rec (NamedWith f VectorVal) (r ': rs)
+                  -> Relation f (r ': rs)
+
+relationToUnsafeRelation :: 
+  ( NamedTypeWithValuesAll f rs Ord
+  , NamedTypeWithValuesAll f rs Typeable
+  , NamedTypeWithValuesAll f rs HasDefaultVector
+  , ListAll rs IsNamedType
+  ) => Relation f rs -> Either NullRelArity (Map Col HiddenVector)
+relationToUnsafeRelation r = case r of
+  RelationNull a -> Left a
+  RelationPresent vrec -> 
+    fmap (Map.mapKeys Col) (Right (recToHiddenVectorMap2 vrec))
 
 data Pred (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
   PredNot     :: Pred f rs -> Pred f rs
@@ -35,15 +66,20 @@ data Pred (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) whe
   PredAnd     :: Sublist cs as -> Sublist cs bs
               -> Pred f as -> Pred f bs -> Pred f cs
   PredEqValue :: val -> Pred f '[ 'NamedTypeOf key val]
-  PredEqCol   :: OrdList f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
+  PredEqCols  :: OrdList f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
               -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
 
 data RelOp (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
-  RelTable    :: ListAll rs IsNamedType
-              => String
-              -> OrdList f rs 
-              -> Rec (NamedWith f VectorVal) rs 
-              -> RelOp f rs
+  RelTable    :: 
+    ( ListAll rs IsNamedType
+    , NamedTypeWithValuesAll f rs Ord
+    , NamedTypeWithValuesAll f rs Typeable
+    , NamedTypeWithValuesAll f rs HasDefaultVector
+    )
+    => String
+    -> OrdList f rs 
+    -> Relation f rs 
+    -> RelOp f rs
   RelJoin     :: RelOp f as -> RelOp f bs -> RelOp f (Union f as bs)
   RelRestrict :: Sublist super sub -> Pred f sub -> RelOp f super -> RelOp f super
   RelProject  :: Sublist super sub -> RelOp f super -> RelOp f sub
@@ -53,7 +89,7 @@ valEq _ v = PredEqValue v
 
 colEq :: ApplyCmp f ('NamedTypeOf key1 val) ('NamedTypeOf key2 val) ~ GT
   => Proxy val -> Proxy key1 -> Proxy key2 -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val]
-colEq _ _ _ = PredEqCol (OrdListCons OrdListSingle)
+colEq _ _ _ = PredEqCols (OrdListCons OrdListSingle)
 
 project :: forall sub subKeys super f. 
      (sub ~ SublistLookupMany super subKeys, ImplicitSublist super sub)
@@ -89,7 +125,7 @@ equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
         (relOpOrdered rs)
         subLs subRs
       )
-      (PredEqCol (OrdListCons OrdListSingle)) (RelJoin ls rs)
+      (PredEqCols (OrdListCons OrdListSingle)) (RelJoin ls rs)
     EQy -> error "hmmm"
   where
   fProxy = Proxy :: Proxy f
@@ -122,8 +158,12 @@ toUnchecked :: forall f rs. RelOp f rs -> URelOp
 toUnchecked = go
   where
   go :: forall g as. RelOp g as -> URelOp
-  go (RelTable name asOrd _) = URelTable 
-    (UTable name (colsFromRec (ordListDict (Proxy :: Proxy IsNamedType) asOrd)))
+  go (RelTable name asOrd relation) = URelTable 
+    (UTable 
+      name 
+      (colsFromRec (ordListDict (Proxy :: Proxy IsNamedType) asOrd))
+      (relationToUnsafeRelation relation)
+    )
   go (RelJoin a b) = URelJoin (go a) (go b)
   go (RelProject sub relNext) = URelProject 
     (colsFromRec (projectRec sub (relOpTypes relNext))) (go relNext)
@@ -147,12 +187,16 @@ data URelOp
   | URelJoin URelOp URelOp 
   | URelRestrict UPred URelOp 
   | URelTable UTable
+  | URelJoinMany (Patricia.Gr URelOp (Col,Col))
+
+instance Show URelOp where
+  show = showURelOp
 
 -- predOrdList :: Pred f rs -> OrdList f rs
 -- predOrdList = go
 --   where
 --   go :: forall f rs. Pred f rs -> OrdList f rs
---   go (PredEqCol o) = o
+--   go (PredEqCols o) = o
 --   go (PredEqValue _) = OrdListSingle
   
 predToUnchecked :: Rec (DictFun IsNamedType) rs -> Pred f rs -> UPred
@@ -166,22 +210,34 @@ predToUnchecked = go
   go d pred@(PredOr subA subB a b) = UPredOr
     (go (projectRec subA d) a)
     (go (projectRec subB d) b)
-  go (d@(DictFun Dict) :& e@(DictFun Dict) :& RNil) (PredEqCol (OrdListCons OrdListSingle)) = 
+  go (d@(DictFun Dict) :& e@(DictFun Dict) :& RNil) (PredEqCols (OrdListCons OrdListSingle)) = 
     UPredEqCols (Col (ntName d)) (Col (ntName e))
   go (d@(DictFun Dict) :& RNil) (PredEqValue v) = 
     UPredEqValue (Col (ntName d)) (ntType d) (toAny v)
 
+-- Improve this at some point to tab things over correctly on a 
+-- multi join.
 showURelOp :: URelOp -> String
 showURelOp = go 0
   where 
   go :: Int -> URelOp -> String
-  go i (URelTable ut) = List.replicate i ' ' ++ utName ut
-    ++ " (" ++ join (List.intersperse "," (map getCol $ Set.toList (utColumns ut))) ++ ")" ++ "\n"
+  go i (URelTable ut) = List.replicate i ' ' 
+    ++ "Table: " ++ utName ut
+    ++ " (" ++ join (List.intersperse ", " (map getCol $ Set.toList (utColumns ut))) ++ ")" ++ "\n"
   go i (URelJoin a b) = List.replicate i ' ' ++ "Natural Join" ++ "\n" ++ go (i + 2) a ++ go (i + 2) b
   go i (URelProject cols r) = List.replicate i ' ' 
     ++ "Project (" ++ join (List.intersperse "," (map getCol $ Set.toList cols)) ++ ")" ++ "\n" ++ go (i + 2) r 
   go i (URelRestrict pred r) = List.replicate i ' ' 
     ++ "Restrict (" ++ showUPred pred ++ ")" ++ "\n" ++ go (i + 2) r 
+  go i (URelJoinMany gr) = List.replicate i ' '
+    ++ "Join Many\n" ++ List.replicate (i + 2) ' ' ++ "( " ++ join 
+       ( List.intersperse ("\n" ++ List.replicate (i + 2) ' ' ++ ", ")
+         ( map (\(n1,n2,(c1,c2)) -> "[" ++ show n1 ++ "," ++ show n2 ++ "] " ++ getCol c1 ++ " = " ++ getCol c2) 
+               (Graph.labEdges gr) 
+         )
+       )
+    ++ "\n" ++ List.replicate (i + 2) ' ' ++ ")\n" 
+    ++ join (map (\(n,u) -> replicate (i + 2) ' ' ++ show n ++ ". " ++ drop (i + 5) (go (i + 5) u)) (Graph.labNodes gr))
 
 showUPred :: UPred -> String
 showUPred = go
@@ -256,6 +312,64 @@ canonizeURelOpStep = go
       when (List.length pred1 > 0 || List.length pred2 > 0) $ tell (Any True)
       return opJoinRestrict
 
+uPredGraphJoins :: URelOp -> URelOp
+uPredGraphJoins = go
+  where
+  go :: URelOp -> URelOp
+  go (URelTable a) = URelTable a
+  go (URelProject cols a) = URelProject cols (go a)
+  go (URelJoinMany _) = error "uPredGraphJoins: URelJoinMany encountered"
+  go u@(URelJoin a b) = URelJoinMany (makeGraph (execState (build u) mempty))
+  go (URelRestrict pred (URelJoin a b)) = error "write this"
+  go (URelRestrict pred a) = URelRestrict pred (go a)
+  build :: URelOp -> State ([(Col,Col)],[URelOp]) ()
+  build (URelTable a) = modify (second (URelTable a :))
+  build (URelProject cols a) = modify (second (URelProject cols (go a) :))
+  build (URelJoin a b) = do
+    mapM_ (\col -> modify (first ((col,col):)))
+      (Set.toList (Set.intersection (uRelOpCols a) (uRelOpCols b)))
+    build a
+    build b
+  build (URelJoinMany _) = error "uPredGraphJoins: URelJoinMany encountered"
+  build (URelRestrict pred (URelJoin a b)) = do
+    -- TODO: Figure out a better story for OR predicates.
+    -- Right now, it just errors.
+    let preds = NonEmpty.toList (uPredSplitAnd pred)
+        colPairs = map requireEqCol preds
+    modify (first (colPairs ++))
+    build (URelJoin a b)
+  build (URelRestrict pred a) = modify (second (URelRestrict pred (go a) :))
+
+-- partial function
+requireEqCol :: UPred -> (Col,Col)
+requireEqCol (UPredEqCols a b) = (a,b)
+requireEqCol _ = error "requireEqCol failed"
+
+-- The predicates passed to this function should be list
+-- of predication that should be ANDed together. None of 
+-- them should be UPredAnd or UPredEqValue.
+makeGraph :: ([(Col,Col)],[URelOp]) -> Patricia.Gr URelOp (Col,Col)
+makeGraph (preds,ops) = List.foldl' goEdge initGraph preds
+  where 
+  goEdge graph (c1,c2) = 
+    List.foldl' 
+      (\g (n1,n2) -> Graph.insEdge (n1,n2,(c1,c2)) 
+                   . Graph.delLEdge (n1,n2,(c1,c2))
+                   $ g) 
+      graph $ do
+        ix1 <- colBaseTableIxs c1
+        ix2 <- colBaseTableIxs c2
+        when (c1 == c2) $ guard (ix1 > ix2)
+        return (ix1,ix2)
+  initGraph = Graph.mkGraph ixedOps []
+  ixedOps  = zip (enumFrom 1) ops
+  ixedCols :: [(Int, Set Col)]
+  ixedCols = map (second uRelOpCols) ixedOps
+  colBaseTableIxs col = id
+    $ map fst
+    $ flip List.filter ixedCols $ \(ix,cols) -> 
+        Set.member col cols
+
 -- The resulting UPreds cannot be UPredAnd. Also, I should
 -- use Data.List.NonEmpty. Also, the UPred needs to be
 -- in conjunctive normal form before passing it to this
@@ -311,16 +425,59 @@ uRelOpCols = go
   go (URelRestrict _ op)  = go op
   go (URelJoin op1 op2)   = Set.union (go op1) (go op2)
 
-type family RequiredEqStar (a :: *) (b :: *) (r :: k) :: k where
-  RequiredEqStar a a k = k
+proxifyRelOp :: RelOp g rs -> Rec Proxy rs
+proxifyRelOp = error "write me"
 
--- data OrdNamedTypes (cs :: [NamedType *]) where
---   OrdNamedTypesNil    :: OrdNamedTypes '[]
---   OrdNamedTypesSingle :: Proxy c -> OrdNamedTypes '[c]
---   OrdNamedTypesAppend :: 
---     ( CmpSymbol cname dname ~ GT
---     )
---     => Proxy ('NamedType cname cval) 
---     -> OrdNamedTypes (('NamedType dname dval) ': cs) 
---     -> OrdNamedTypes (('NamedType cname cval) ': ('NamedType dname dval) ': cs)
+relOpRun :: forall g rs. 
+  ( ListAll rs IsNamedType
+  , NamedTypeWithValuesAll g rs Typeable
+  , NamedTypeWithValuesAll g rs HasDefaultVector
+  )
+  => RelOp g rs 
+  -> Rec (NamedWith g VectorVal) rs
+relOpRun r = id
+  (indexedHiddenVectorMapsToRec2 
+    (Proxy :: Proxy g)
+    (proxifyRelOp r)
+    .
+    fmap (second $ Map.mapKeys getCol)
+  )
+  . either (const []) id
+  . uRelOpRun
+  . toUnchecked
+  $ r
+
+-- Runs the URelOp without first optimizing the AST.
+uRelOpRun :: URelOp -> Either NullRelArity [(U.Vector Int, Map Col HiddenVector)]
+uRelOpRun = go
+  where
+  go (URelTable t) = case utData t of
+    Left a -> Left a
+    Right m -> case Map.elems m of
+      HiddenVector (VectorVal v) : _ -> Right [(U.fromList (enumFromTo 0 (G.length v - 1)),m)]
+      [] -> error "uRelOpRun: URelTable with incorrect empty map"
+  go (URelRestrict pred op) = case go op of
+    -- Left case is unlikely. The predicate must be a lambda
+    -- that is effectively `const True` or `const False`.
+    Left a -> case a of
+      NullRelZero -> Left NullRelZero
+      NullRelOne -> error "uRelOpRun: fix me after lambdas are allowed"
+    Right xs -> 
+      let mask = applyUPred pred (listMapHelper xs)
+      in Right (map (first (U.ifilter (\i _ -> mask U.! i))) xs)
+
+-- This could be optimized more
+applyUPred :: UPred -> Map Col (U.Vector Int, HiddenVector) -> U.Vector Bool
+applyUPred upred m = go upred
+  where
+  go (UPredEqValue col rep val) = case Map.lookup col m of
+    Nothing -> error ("applyUPred: column " ++ getCol col ++ " not found.")
+    Just (ixs, HiddenVector (VectorVal v)) -> if typeRep v == rep
+      then indexManyPredicate (== unsafeCoerce val) ixs v
+      else error "applyUPred: mismatched types for UPredEqValue"
+
+-- This assumes that keys are not reused across
+-- different maps in the list.
+listMapHelper :: Ord k => [(a,Map k v)] -> Map k (a,v)
+listMapHelper = Map.unions . map (\(a,m) -> fmap (\v -> (a,v)) m)
 

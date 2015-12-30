@@ -3,7 +3,7 @@
 
 module Data.Vinyl.Named where
 
-import GHC.TypeLits (Symbol,KnownSymbol,symbolVal)
+import GHC.TypeLits (Symbol,KnownSymbol,symbolVal,CmpSymbol)
 import Data.Map.Strict (Map)
 import Data.Proxy (Proxy(Proxy))
 import Unsafe.Coerce (unsafeCoerce)
@@ -24,6 +24,44 @@ import Data.Type.Equality ((:~:)(Refl))
 import qualified Data.Vector.Hybrid  as Hybrid
 import qualified Data.Vector.Unboxed as U
 import Data.Constraint
+
+data Tagged 
+
+data CmpFun               :: * -> *
+data SymSymbol            :: CmpFun Symbol -> *
+data SymNamedTypeOfSymbol :: CmpFun (NamedTypeOf Symbol *) -> *
+data SymNamedType         :: CmpFun (NamedType *) -> *
+data SymPairNamedType     :: CmpFun (PairNamedType *) -> *
+
+type family ApplyCmp (f :: CmpFun k -> *) (a :: k) (b :: k) :: Ordering
+type instance ApplyCmp SymNamedType ('NamedType name1 typ1) ('NamedType name2 typ2) = CmpSymbol name1 name2
+type instance ApplyCmp SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) ('NamedTypeOf name2 typ2) = CmpSymbol name1 name2
+
+type family ApplyType (f :: CmpFun k -> *) (a :: k) :: *
+type instance ApplyType SymNamedType ('NamedType name1 typ1) = typ1
+type instance ApplyType SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = typ1
+
+type family ApplyKey (f :: CmpFun k -> *) (a :: k) :: n
+type instance ApplyKey SymNamedType ('NamedType name1 typ1) = name1
+type instance ApplyKey SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = name1
+
+newtype NamedWith (g :: CmpFun k -> *) (f :: * -> *) (a :: k) = 
+  NamedWith { getNamedWith :: f (ApplyType g a)}
+
+class IsNamedType t where
+  ntName :: proxy t -> String
+  ntType :: proxy t -> TypeRep
+   
+instance (KnownSymbol (NamedTypeKey s), Typeable (NamedTypeValue s)) => IsNamedType (s :: NamedType *) where
+  ntName _ = symbolVal (Proxy :: Proxy (NamedTypeKey s))
+  ntType _ = typeRep (Proxy :: Proxy (NamedTypeValue s))
+
+instance  (KnownSymbol key, Typeable val) => IsNamedType ('NamedTypeOf key val) where
+  ntName _ = symbolVal (Proxy :: Proxy key)
+  ntType _ = typeRep (Proxy :: Proxy val)
+
+class HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
+instance HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
 
 data DictFun (c :: k -> Constraint) (a :: k) where
   DictFun :: Dict (c a) -> DictFun c a
@@ -69,6 +107,9 @@ type family NamedTypeKeysAll (rs :: [NamedType *]) (c :: Symbol -> Constraint) :
 type family ZipNames (ks :: [Symbol]) (vs :: [*]) where
   ZipNames '[] '[] = '[]
   ZipNames (k ': ks) (v ': vs) = ('NamedType k v ': ZipNames ks vs)
+type family NamedTypeWithValuesAll (f :: CmpFun k -> *) (rs :: [k]) (c :: * -> Constraint) :: Constraint where
+  NamedTypeWithValuesAll f '[] c = ()
+  NamedTypeWithValuesAll f (r ': rs) c = (c (ApplyType f r), NamedTypeWithValuesAll f rs c)
 
 class KnownSymbol (NamedTypeKey t) => NamedTypeKnownSymbol (t :: NamedType *)
 instance KnownSymbol (NamedTypeKey t) => NamedTypeKnownSymbol (t :: NamedType *)
@@ -91,7 +132,8 @@ toAnyMap :: ListAll rs NamedTypeKnownSymbol
 toAnyMap RNil = Map.empty
 toAnyMap ((NamedValue v :: NamedValue r) :& rs) = 
   Map.insert (symbolVal (Proxy :: Proxy (NamedTypeKey r))) 
-             (toAny v) (toAnyMap rs) 
+             (toAny v) 
+             (toAnyMap rs) 
 
 fromAnyMap :: ListAll rs NamedTypeKnownSymbol
            => Rec proxy rs -> Map String Any -> Rec NamedValue rs
@@ -238,6 +280,40 @@ recToHiddenVectorMap ((Named v :: Named VectorVal r) :& rs) =
   Map.insert (symbolVal (Proxy :: Proxy (NamedTypeKey r)))
              (HiddenVector v)
              (recToHiddenVectorMap rs)
+
+recToHiddenVectorMap2 :: forall rs g. 
+  ( NamedTypeWithValuesAll g rs Ord
+  , NamedTypeWithValuesAll g rs Typeable
+  , NamedTypeWithValuesAll g rs HasDefaultVector
+  , ListAll rs IsNamedType
+  )
+  => Rec (NamedWith g VectorVal) rs 
+  -> Map String HiddenVector
+recToHiddenVectorMap2 RNil = Map.empty
+recToHiddenVectorMap2 ((NamedWith v :: NamedWith g VectorVal r) :& rs) = 
+  Map.insert 
+    (ntName (Proxy :: Proxy r))
+    (HiddenVector v)
+    (recToHiddenVectorMap2 rs)
+
+-- This only works if `rs` does not contain duplicate names
+indexedHiddenVectorMapsToRec2 :: forall (rs :: [k]) proxy1 proxy2 (g :: CmpFun k -> *).
+  ( ListAll rs IsNamedType
+  , NamedTypeWithValuesAll g rs Typeable
+  , NamedTypeWithValuesAll g rs HasDefaultVector
+  )
+  => proxy1 g
+  -> Rec proxy2 rs
+  -> [(U.Vector Int, Map String HiddenVector)]
+  -> Rec (NamedWith g VectorVal) rs
+indexedHiddenVectorMapsToRec2 _ RNil m = if and (map (Map.null . snd) m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
+indexedHiddenVectorMapsToRec2 g ((_ :: proxy2 r) :& rs) m = case lookupHelper keyStr m of
+  (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (ApplyType g r :~: a)) of
+    Just Refl -> NamedWith (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec2 g rs mnext
+    Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
+  where 
+  keyStr = ntName (Proxy :: Proxy r)
+
 
 hiddenVectorsToHiddenRec :: [HiddenVector] -> HiddenRec VectorVal
 hiddenVectorsToHiddenRec dvs = case dvs of

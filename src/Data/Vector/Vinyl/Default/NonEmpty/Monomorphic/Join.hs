@@ -7,6 +7,7 @@ module Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join where
 import Control.Monad.Primitive (PrimMonad,PrimState)
 import qualified Data.Vector.Algorithms.Merge as Merge
 import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector.Unboxed.Mutable as UM
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Hybrid          as Hybrid
@@ -68,6 +69,14 @@ indexMany ixs xs = runST $ do
   flip U.imapM_ ixs $ \i ix -> do
     GM.write res i (xs G.! ix)
   G.freeze res
+
+indexManyPredicate :: ( G.Vector v a ) 
+  => (a -> Bool) -> U.Vector Int -> v a -> U.Vector Bool
+indexManyPredicate pred ixs xs = runST $ do
+  res <- UM.new (U.length ixs)
+  flip U.imapM_ ixs $ \i ix -> do
+    UM.write res i (pred (xs G.! ix))
+  U.freeze res
 
 fullJoinIndicesImmutable :: 
   ( G.Vector v a

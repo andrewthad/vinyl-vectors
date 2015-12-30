@@ -24,6 +24,7 @@ main :: IO ()
 main = do
   putStrLn $ showURelOp chosenOp
   putStrLn $ showURelOp $ canonizeURelOp chosenOp
+  putStrLn $ showURelOp $ uPredGraphJoins $ canonizeURelOp chosenOp
 
 chosenOp :: URelOp
 chosenOp = myOp2
@@ -37,22 +38,37 @@ myOp = toUnchecked
 myOp2 :: URelOp
 myOp2 = toUnchecked 
   $ restrict (valEq [pr1|"dog_age"|] (44 :: Int))
+  $ restrict (valEq [pr1|"dog_name"|] ("Scruff" :: Text))
+  $ RelJoin details
   $ RelJoin toy
   $ RelJoin household
   $ equijoin [pr1|"person_id"|] [pr1|"dog_owner"|] people 
-  $ project [pr|"dog_owner","dog_age"|] dogs2
+  $ dogs2
 
-dogs :: RelOp SymNamedTypeOfSymbol
+type Dog = 
   '[ 'NamedTypeOf "person_id" Int
    , 'NamedTypeOf "dog_name" Text
    , 'NamedTypeOf "dog_age" Int
    ]
-dogs = RelTable "dogs" implicitOrdList thing
+
+myOp3 :: RelOp SymNamedTypeOfSymbol Dog
+myOp3 = id
+  $ restrict (valEq [pr1|"person_id"|] (3 :: Int))
+  $ dogs
+
+dogs :: RelOp SymNamedTypeOfSymbol Dog
+dogs = RelTable "dogs" implicitOrdList r
+  where 
+  r = RelationPresent 
 
 dogs2 :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "dog_owner" Int
+  '[ 'NamedTypeOf "dog_weight" Int
+   , 'NamedTypeOf "dog_size" Int
+   , 'NamedTypeOf "dog_owner" Int
    , 'NamedTypeOf "dog_name" Text
    , 'NamedTypeOf "dog_id" Text
+   , 'NamedTypeOf "dog_breed" Text
+   , 'NamedTypeOf "dog_alive" Bool
    , 'NamedTypeOf "dog_age" Int
    ]
 dogs2 = RelTable "dogs2" implicitOrdList thing
@@ -71,15 +87,22 @@ household :: RelOp SymNamedTypeOfSymbol
    ]
 household = RelTable "household" implicitOrdList thing
 
+details :: RelOp SymNamedTypeOfSymbol
+  '[ 'NamedTypeOf "household_id" Int
+   , 'NamedTypeOf "address" Text
+   ]
+details = RelTable "details" implicitOrdList thing
+  
+
 toy :: RelOp SymNamedTypeOfSymbol
   '[ 'NamedTypeOf "toy_name" Int
    , 'NamedTypeOf "dog_id" Text
    ]
 toy = RelTable "toy" implicitOrdList thing
 
-thing :: (ListAll rs (InnerHasDefaultVector SymNamedTypeOfSymbol), RecApplicative rs) 
-  => Rec (NamedWith SymNamedTypeOfSymbol VectorVal) rs
-thing = rpureConstrained' 
+thing :: (rs ~ (a ': as), ListAll rs (InnerHasDefaultVector SymNamedTypeOfSymbol), RecApplicative rs) 
+  => Relation SymNamedTypeOfSymbol rs
+thing = RelationPresent $ rpureConstrained' 
   (NamedWith (VectorVal G.empty)) 
   (reifyDictFun (Proxy :: Proxy (InnerHasDefaultVector SymNamedTypeOfSymbol)) (rpure Proxy))
 

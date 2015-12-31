@@ -43,14 +43,6 @@ unionRec p ls@(l@(DictFun Dict) :& lsNext) rs@(r@(DictFun Dict) :& rsNext) = cas
 ordListDict :: ListAll rs c => Proxy c -> OrdList f rs -> Rec (DictFun c) rs
 ordListDict p ordList = reifyDictFun p (ordRec ordList)
 
--- | First element of a type pair.
-type family Fst k where
-    Fst '(a,b) = a
-
--- |Second element of a type pair.
-type family Snd k where
-    Snd '(a,b) = b
-
 type ApplyEq f a b k = EqStar (ApplyType f a) (ApplyType f b) k
 
 type family EqStar (a :: *) (b :: *) (r :: k) :: k where

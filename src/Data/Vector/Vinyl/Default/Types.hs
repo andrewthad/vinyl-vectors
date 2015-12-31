@@ -7,6 +7,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Data.Vector.Vinyl.Default.Types
   ( MVectorVal(..)
   , VectorVal(..)
@@ -26,6 +28,7 @@ import qualified Data.Vector.Generic as G
 import Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
+import Data.Vector.Vinyl.TypeLevel (Snd)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 deriving instance Eq (DefaultVector t t) => Eq (VectorVal t)
@@ -34,8 +37,6 @@ deriving instance Ord (DefaultVector t t) => Ord (VectorVal t)
 newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
 newtype DefaultBoxed a = DefaultBoxed { getDefaultBoxed :: a }
   deriving (Eq,Ord)
-
-
 
 -- | The most efficient vector type for each column data type.
 class ( GM.MVector (G.Mutable (DefaultVector t)) t
@@ -217,4 +218,5 @@ derivingVector "Either" ''HasDefaultVector ''DefaultVector ''VectorizableReprese
   [| \ (p, (a,b)) -> if p then Left a else Right b |]
 instance (Default a, Default b, HasDefaultVector a, HasDefaultVector b) => HasDefaultVector (Either a b) where
   type DefaultVector (Either a b) = V_Either
+
 

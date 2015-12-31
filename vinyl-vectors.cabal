@@ -67,6 +67,7 @@ library
     , transformers      >= 0.4.2   && < 0.5.0
     , semigroups        >= 0.16
     , fgl
+    , tagged            >= 0.8     && < 0.9
   default-extensions:
     KindSignatures
     StandaloneDeriving

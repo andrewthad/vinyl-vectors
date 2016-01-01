@@ -17,7 +17,7 @@ import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal as Viny
 import qualified Data.List as List
 import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
 import Data.Vector.Vinyl.Default.Types (HasDefaultVector,VectorVal)
-import Data.Vector.Vinyl.TypeLevel (ListAll)
+import Data.List.TypeLevel (ListAll)
 import Data.Vinyl.Core       (Rec(..))
 import Data.Vinyl.Functor    (Identity)
 import Data.Vinyl.TypeLevel  (RecAll)

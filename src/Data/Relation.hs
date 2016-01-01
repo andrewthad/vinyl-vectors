@@ -19,7 +19,7 @@ import Data.List.TypeLevel
 import Data.Vector.Vinyl.Default.Types (VectorVal(..))
 import Data.Proxy (Proxy(..))
 import Data.Vinyl.Core (Rec(..))
-import Data.Vector.Vinyl.TypeLevel
+import Data.List.TypeLevel
 import Data.Constraint
 import qualified Data.Graph.Inductive.Tree as Patricia
 -- import qualified Data.Graph.Inductive.PatriciaTree as Patricia
@@ -43,84 +43,81 @@ data UTable = UTable
   , utData    :: Either NullRelArity (Map Col HiddenVector)
   }
 
-data Relation (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
-  RelationNull    :: NullRelArity -> Relation f '[]
-  RelationPresent :: Rec (NamedWith f VectorVal) (r ': rs)
-                  -> Relation f (r ': rs)
+data Relation (rs :: [(k,*)]) where
+  RelationNull    :: NullRelArity -> Relation '[]
+  RelationPresent :: Rec (UncurriedTaggedFunctor VectorVal) (r ': rs) -> Relation (r ': rs)
 
-relationToUnsafeRelation :: 
-  ( NamedTypeWithValuesAll f rs Ord
-  , NamedTypeWithValuesAll f rs Typeable
-  , NamedTypeWithValuesAll f rs HasDefaultVector
-  , ListAll rs IsNamedType
-  ) => Relation f rs -> Either NullRelArity (Map Col HiddenVector)
+relationToUnsafeRelation :: ( ListAll rs RelOpConstraints )
+  => Relation rs -> Either NullRelArity (Map Col HiddenVector)
 relationToUnsafeRelation r = case r of
   RelationNull a -> Left a
   RelationPresent vrec -> 
-    fmap (Map.mapKeys Col) (Right (recToHiddenVectorMap2 vrec))
+    fmap (Map.mapKeys Col) (Right (recToHiddenVectorMap vrec))
 
-data Pred (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
-  PredNot     :: Pred f rs -> Pred f rs
+data Pred (rs :: [(k,*)]) where
+  PredNot     :: Pred rs -> Pred rs
   PredOr      :: Sublist cs as -> Sublist cs bs 
-              -> Pred f as -> Pred f bs -> Pred f cs
+              -> Pred as -> Pred bs -> Pred cs
   PredAnd     :: Sublist cs as -> Sublist cs bs
-              -> Pred f as -> Pred f bs -> Pred f cs
-  PredEqValue :: val -> Pred f '[ 'NamedTypeOf key val]
-  PredEqCols  :: OrdList f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
-              -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val] 
+              -> Pred as -> Pred bs -> Pred cs
+  PredEqValue :: val -> Pred '[ '(key,val)]
+  PredEqCols  :: OrdList '[ '(key1,val), '(key2,val)] 
+              -> Pred '[ '(key1,val), '(key2,val)] 
 
-data RelOp (f :: CmpFun (NamedTypeOf key *) -> *) (rs :: [NamedTypeOf key *]) where
+
+data RelOp (rs :: [(k,*)]) where
   RelTable    :: 
-    ( ListAll rs IsNamedType
-    , NamedTypeWithValuesAll f rs Ord
-    , NamedTypeWithValuesAll f rs Typeable
-    , NamedTypeWithValuesAll f rs HasDefaultVector
+    ( ListAll rs RelOpConstraints 
+    -- , ListAll rs (ConstrainFst TypeString)
+    -- , ListAll rs (ConstrainSnd Typeable)
+    -- , ListAll rs (ConstrainSnd HasDefaultVector)
+    -- , ListAll rs (ConstrainSnd Ord)
     )
     => String
-    -> OrdList f rs 
-    -> Relation f rs 
-    -> RelOp f rs
-  RelJoin     :: RelOp f as -> RelOp f bs -> RelOp f (Union f as bs)
-  RelRestrict :: Sublist super sub -> Pred f sub -> RelOp f super -> RelOp f super
-  RelProject  :: Sublist super sub -> RelOp f super -> RelOp f sub
+    -> OrdList rs 
+    -> Relation rs 
+    -> RelOp rs
+  RelJoin     :: RelOp as -> RelOp bs -> RelOp (Union as bs)
+  RelRestrict :: Sublist super sub -> Pred sub -> RelOp super -> RelOp super
+  RelProject  :: Sublist super sub -> RelOp super -> RelOp sub
 
-valEq :: Proxy key -> val -> Pred f '[ 'NamedTypeOf key val]
+valEq :: Proxy key -> val -> Pred '[ '(key,val)]
 valEq _ v = PredEqValue v
 
-colEq :: ApplyCmp f ('NamedTypeOf key1 val) ('NamedTypeOf key2 val) ~ GT
-  => Proxy val -> Proxy key1 -> Proxy key2 -> Pred f '[ 'NamedTypeOf key1 val, 'NamedTypeOf key2 val]
+colEq :: Cmp key1 key2 ~ GT
+  => Proxy val -> Proxy key1 -> Proxy key2 -> Pred '[ '(key1,val), '(key2,val)]
 colEq _ _ _ = PredEqCols (OrdListCons OrdListSingle)
 
-project :: forall sub subKeys super f. 
+project :: forall sub subKeys super. 
      (sub ~ SublistLookupMany super subKeys, ImplicitSublist super sub)
-  => Proxy subKeys -> RelOp f super -> RelOp f sub
+  => Proxy subKeys -> RelOp super -> RelOp sub
 project _ relOp = RelProject (implicitSublist :: Sublist super sub) relOp
 
-restrict :: ImplicitSublist super sub => Pred f sub -> RelOp f super -> RelOp f super
+restrict :: ImplicitSublist super sub => Pred sub -> RelOp super -> RelOp super
 restrict pred relOp = RelRestrict implicitSublist pred relOp
 
-equijoin :: forall f ls rs name1 name2 v.
-  ( ImplicitSublist ls '[ 'NamedTypeOf name1 v]
-  , ImplicitSublist rs '[ 'NamedTypeOf name2 v]
+equijoin :: forall ls rs name1 name2 v.
+  ( ImplicitSublist ls '[ '(name1,v)]
+  , ImplicitSublist rs '[ '(name2,v)]
   , v ~ SublistLookup rs name2
   )
-  => Proxy name1 -> Proxy name2 -> RelOp f ls 
-  -> RelOp f rs -> RelOp f (Union f ls rs)
+  => Proxy name1 -> Proxy name2 -> RelOp ls 
+  -> RelOp rs -> RelOp (Union ls rs)
 equijoin _ _ = equijoinExplicit 
-  (implicitSublist :: Sublist ls '[ 'NamedTypeOf name1 v])
-  (implicitSublist :: Sublist rs '[ 'NamedTypeOf name2 v])
+  (implicitSublist :: Sublist ls '[ '(name1,v)])
+  (implicitSublist :: Sublist rs '[ '(name2,v)])
 
-equijoinExplicit :: forall ls rs name1 name2 v f.
-     Sublist ls '[ 'NamedTypeOf name1 v] 
-  -> Sublist rs '[ 'NamedTypeOf name2 v] 
-  -> RelOp f ls -> RelOp f rs -> RelOp f (Union f ls rs)
+equijoinExplicit :: forall ls rs name1 name2 v.
+     Sublist ls '[ '(name1,v)] 
+  -> Sublist rs '[ '(name2,v)] 
+  -> RelOp ls -> RelOp rs -> RelOp (Union ls rs)
 equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
-  (DictFun Dict, DictFun Dict) -> case applyCmpString fProxy lDict rDict of
+  (DictFun Dict, DictFun Dict) -> case applyCmpString (proxyFst lDict) (proxyFst rDict) of
     LTy -> error "lt... hmmm"
     GTy -> RelRestrict 
-      (unionSublist fProxy 
-        (relOpTypes ls) 
-        (relOpTypes rs) 
+      (unionSublist 
+        (relOpNamesTypes ls) 
+        (relOpNamesTypes rs) 
         (relOpOrdered ls)
         (relOpOrdered rs)
         subLs subRs
@@ -128,52 +125,77 @@ equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
       (PredEqCols (OrdListCons OrdListSingle)) (RelJoin ls rs)
     EQy -> error "hmmm"
   where
-  fProxy = Proxy :: Proxy f
-  lDict :: DictFun IsNamedType ('NamedTypeOf name1 v)
+  lDict :: DictFun (ConstrainFst TypeString) '(name1,v)
   lDict = case projectRec subLs (relOpTypes ls) of
     d :& RNil -> d
-  rDict :: DictFun IsNamedType ('NamedTypeOf name2 v)
+  rDict :: DictFun (ConstrainFst TypeString) '(name2,v)
   rDict = case projectRec subRs (relOpTypes rs) of
     d :& RNil -> d
 
-relOpOrdered :: forall f rs. RelOp f rs -> OrdList f rs
+relOpOrdered :: forall rs. RelOp rs -> OrdList rs
 relOpOrdered = go
   where
-  go :: forall g as. RelOp g as -> OrdList g as
-  go (RelTable _ asOrd _)        = asOrd
+  go :: forall as. RelOp as -> OrdList as
+  go (RelTable _ asOrd _)      = asOrd
   go (RelRestrict _ _ relNext) = go relNext
   go (RelProject sub relNext)  = ordSublist sub (go relNext)
   go (RelJoin relA relB)       = ordUnion (go relA) (go relB)
 
-relOpTypes :: forall f rs. RelOp f rs -> Rec (DictFun IsNamedType) rs
-relOpTypes = go
+relOpConstraints :: forall rs. RelOp rs -> Rec (DictFun RelOpConstraints) rs
+relOpConstraints = go
   where
-  go :: forall g as. RelOp g as -> Rec (DictFun IsNamedType) as
-  go (RelTable _ asOrd _)      = ordListDict (Proxy :: Proxy IsNamedType) asOrd
+  go :: forall as. RelOp as -> Rec (DictFun RelOpConstraints) as
+  go (RelTable _ asOrd _)      = ordListDict (Proxy :: Proxy RelOpConstraints) asOrd
   go (RelRestrict _ _ relNext) = go relNext
   go (RelProject sub relNext)  = projectRec sub (go relNext)
-  go (RelJoin a b)             = unionRec (Proxy :: Proxy g) (go a) (go b)
+  go (RelJoin a b)             = unionRec (go a) (go b)
 
-toUnchecked :: forall f rs. RelOp f rs -> URelOp
+relOpTypes :: forall rs. RelOp rs -> Rec (DictFun (ConstrainFst TypeString)) rs
+relOpTypes = id
+  . weakenRecDictFun 
+      (Proxy :: Proxy (ConstrainFst TypeString))
+      (Sub Dict)
+  . relOpConstraints
+
+relOpNamesTypes :: forall rs. RelOp rs -> Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) rs
+relOpNamesTypes = id
+  . weakenRecDictFun 
+      (Proxy :: Proxy (ConstrainFst TypeString :&: ConstrainSnd Typeable))
+      (Sub Dict)
+  . relOpConstraints
+
+
+  -- where
+  -- go :: forall as. RelOp as -> Rec (DictFun (ConstrainSnd Typeable)) as
+  -- go (RelTable _ asOrd _)      = ordListDict (Proxy :: Proxy (ConstrainSnd Typeable)) asOrd
+  -- go (RelRestrict _ _ relNext) = go relNext
+  -- go (RelProject sub relNext)  = projectRec sub (go relNext)
+  -- go (RelJoin a b)             = unionRec (go a) (go b)
+
+toUnchecked :: forall rs. RelOp rs -> URelOp
 toUnchecked = go
   where
-  go :: forall g as. RelOp g as -> URelOp
+  go :: forall as. RelOp as -> URelOp
   go (RelTable name asOrd relation) = URelTable 
     (UTable 
       name 
-      (colsFromRec (ordListDict (Proxy :: Proxy IsNamedType) asOrd))
+      (colsFromRec $ weakenRecDictFun 
+        (Proxy :: Proxy (ConstrainFst TypeString)) 
+        (Sub Dict)
+        (ordListDict (Proxy :: Proxy RelOpConstraints) asOrd)
+      )
       (relationToUnsafeRelation relation)
     )
   go (RelJoin a b) = URelJoin (go a) (go b)
   go (RelProject sub relNext) = URelProject 
     (colsFromRec (projectRec sub (relOpTypes relNext))) (go relNext)
   go (RelRestrict sub pred relNext) = URelRestrict 
-    (predToUnchecked (projectRec sub (relOpTypes relNext)) pred) 
+    (predToUnchecked (projectRec sub (relOpNamesTypes relNext)) pred) 
     (go relNext)
 
-colsFromRec :: Rec (DictFun IsNamedType) rs -> Set Col
+colsFromRec :: Rec (DictFun (ConstrainFst TypeString)) rs -> Set Col
 colsFromRec RNil = Set.empty
-colsFromRec (r@(DictFun Dict) :& rs) = Set.insert (Col (ntName r)) (colsFromRec rs)
+colsFromRec (r@(DictFun Dict) :& rs) = Set.insert (Col (typeString $ proxyFst r)) (colsFromRec rs)
 
 data UPred
   = UPredEqValue Col TypeRep Prim.Any -- like Dynamic
@@ -199,10 +221,10 @@ instance Show URelOp where
 --   go (PredEqCols o) = o
 --   go (PredEqValue _) = OrdListSingle
   
-predToUnchecked :: Rec (DictFun IsNamedType) rs -> Pred f rs -> UPred
+predToUnchecked :: Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) rs -> Pred rs -> UPred
 predToUnchecked = go
   where
-  go :: forall f rs. Rec (DictFun IsNamedType) rs -> Pred f rs -> UPred
+  go :: forall f rs. Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) rs -> Pred rs -> UPred
   go d (PredNot p)       = UPredNot (go d p)
   go d pred@(PredAnd subA subB a b) = UPredAnd
     (go (projectRec subA d) a)
@@ -211,9 +233,12 @@ predToUnchecked = go
     (go (projectRec subA d) a)
     (go (projectRec subB d) b)
   go (d@(DictFun Dict) :& e@(DictFun Dict) :& RNil) (PredEqCols (OrdListCons OrdListSingle)) = 
-    UPredEqCols (Col (ntName d)) (Col (ntName e))
+    UPredEqCols (Col (typeString $ proxyFst d)) (Col (typeString $ proxyFst e))
   go (d@(DictFun Dict) :& RNil) (PredEqValue v) = 
-    UPredEqValue (Col (ntName d)) (ntType d) (toAny v)
+    UPredEqValue (Col (typeString $ proxyFst d)) (typeRep $ proxySnd d) (toAny v)
+
+toAny :: a -> Prim.Any
+toAny = unsafeCoerce
 
 -- Improve this at some point to tab things over correctly on a 
 -- multi join.
@@ -425,19 +450,18 @@ uRelOpCols = go
   go (URelRestrict _ op)  = go op
   go (URelJoin op1 op2)   = Set.union (go op1) (go op2)
 
-proxifyRelOp :: RelOp g rs -> Rec Proxy rs
+proxifyRelOp :: RelOp rs -> Rec Proxy rs
 proxifyRelOp = error "write me"
 
-relOpRun :: forall g rs. 
-  ( ListAll rs IsNamedType
-  , NamedTypeWithValuesAll g rs Typeable
-  , NamedTypeWithValuesAll g rs HasDefaultVector
+relOpRun :: forall rs. 
+  ( ListAll rs (ConstrainFst TypeString)
+  , ListAll rs (ConstrainSnd Typeable)
+  , ListAll rs (ConstrainSnd HasDefaultVector)
   )
-  => RelOp g rs 
-  -> Rec (NamedWith g VectorVal) rs
+  => RelOp rs 
+  -> Rec (UncurriedTaggedFunctor VectorVal) rs
 relOpRun r = id
-  (indexedHiddenVectorMapsToRec2 
-    (Proxy :: Proxy g)
+  (indexedHiddenVectorMapsToRec
     (proxifyRelOp r)
     .
     fmap (second $ Map.mapKeys getCol)

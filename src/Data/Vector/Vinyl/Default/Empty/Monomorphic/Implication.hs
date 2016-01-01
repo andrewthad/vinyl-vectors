@@ -21,7 +21,7 @@ import Data.Constraint
 import Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
 import Data.Vinyl.Core (Rec(..))
 import Data.Vinyl.Functor (Identity(..))
-import Data.Vector.Vinyl.TypeLevel (ListAll)
+import Data.List.TypeLevel (ListAll)
 
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Generic as G

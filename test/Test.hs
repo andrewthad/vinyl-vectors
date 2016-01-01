@@ -54,21 +54,6 @@ namedVectorRecordIdentity xs =
   vecRecs = case Vinyl.fromList (map (\(i,b) -> Identity i :& Identity b :& RNil) xs) of
     Vinyl.V v -> v
 
-composedNamedRecordIdentity :: (Maybe Int,Maybe String,Maybe Double) -> Bool
-composedNamedRecordIdentity (ints,strings,doubles) =
-  toRecs r == 
-  toRecs ((Named.composedFromDynamicMap r . Named.composedToDynamicMap) r)
-  where 
-  r = Compose (fmap withAge ints) 
-   :& Compose (fmap withName strings) 
-   :& Compose (fmap withSpeed doubles) 
-   :& RNil
-  withAge x = NamedValue x :: NamedValue ('NamedType "age" Int)
-  withName x = NamedValue x :: NamedValue ('NamedType "name" String)
-  withSpeed x = NamedValue x :: NamedValue ('NamedType "speed" Double)
-  toRecs :: Rec (Compose Maybe NamedValue) rs -> Maybe (Rec NamedValue rs)
-  toRecs = rtraverse (\(Compose xs) -> xs)
-
 namedRecordIdentity :: ArbitraryRec NamedValue 
   '[ 'NamedType "age" Int
    , 'NamedType "name" String
@@ -98,4 +83,19 @@ correctFullJoinIndices as bs = if actual == expected
          b <- Vector.thaw (Vector.fromList bs) 
          fullJoinIndices a b
     )
+
+-- composedNamedRecordIdentity :: (Maybe Int,Maybe String,Maybe Double) -> Bool
+-- composedNamedRecordIdentity (ints,strings,doubles) =
+--   toRecs r == 
+--   toRecs ((Named.composedFromDynamicMap r . Named.composedToDynamicMap) r)
+--   where 
+--   r = Compose (fmap withAge ints) 
+--    :& Compose (fmap withName strings) 
+--    :& Compose (fmap withSpeed doubles) 
+--    :& RNil
+--   withAge x = NamedValue x :: NamedValue ('NamedType "age" Int)
+--   withName x = NamedValue x :: NamedValue ('NamedType "name" String)
+--   withSpeed x = NamedValue x :: NamedValue ('NamedType "speed" Double)
+--   toRecs :: Rec (Compose Maybe NamedValue) rs -> Maybe (Rec NamedValue rs)
+--   toRecs = rtraverse (\(Compose xs) -> xs)
 

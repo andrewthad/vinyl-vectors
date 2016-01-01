@@ -17,7 +17,7 @@ import qualified Data.Vector.Generic as G
 import Data.Vector.Vinyl.Default.Types (HasDefaultVector, VectorVal(..))
 import Data.Proxy
 import Data.Constraint
-import Data.Vector.Vinyl.TypeLevel (ListAll)
+import Data.List.TypeLevel (ListAll)
 import Data.Proxy.TH
 
 main :: IO ()
@@ -46,63 +46,70 @@ myOp2 = toUnchecked
   $ dogs2
 
 type Dog = 
-  '[ 'NamedTypeOf "person_id" Int
-   , 'NamedTypeOf "dog_name" Text
-   , 'NamedTypeOf "dog_age" Int
+  '[ '("person_id", Int)
+   , '("dog_name", Text)
+   , '("dog_age", Int)
    ]
 
-myOp3 :: RelOp SymNamedTypeOfSymbol Dog
+myOp3 :: RelOp Dog
 myOp3 = id
   $ restrict (valEq [pr1|"person_id"|] (3 :: Int))
   $ dogs
 
-dogs :: RelOp SymNamedTypeOfSymbol Dog
-dogs = RelTable "dogs" implicitOrdList r
-  where 
-  r = RelationPresent 
+dogs :: RelOp Dog
+dogs = RelTable "dogs" implicitOrdList thing
+  -- where 
+  -- r = RelationPresent 
 
-dogs2 :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "dog_weight" Int
-   , 'NamedTypeOf "dog_size" Int
-   , 'NamedTypeOf "dog_owner" Int
-   , 'NamedTypeOf "dog_name" Text
-   , 'NamedTypeOf "dog_id" Text
-   , 'NamedTypeOf "dog_breed" Text
-   , 'NamedTypeOf "dog_alive" Bool
-   , 'NamedTypeOf "dog_age" Int
+dogs2 :: RelOp 
+  '[ '("dog_weight", Int)
+   , '("dog_size", Int)
+   , '("dog_owner", Int)
+   , '("dog_name", Text)
+   , '("dog_id", Text)
+   , '("dog_breed", Text)
+   , '("dog_alive", Bool)
+   , '("dog_age", Int)
    ]
 dogs2 = RelTable "dogs2" implicitOrdList thing
 
-people :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "person_weight" Int
-   , 'NamedTypeOf "person_name" Text
-   , 'NamedTypeOf "person_id" Int
-   , 'NamedTypeOf "household_id" Int
+people :: RelOp 
+  '[ '("person_weight", Int)
+   , '("person_name", Text)
+   , '("person_id", Int)
+   , '("household_id", Int)
    ]
 people = RelTable "people" implicitOrdList thing
 
-household :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "household_name" Text
-   , 'NamedTypeOf "household_id" Int
+household :: RelOp 
+  '[ '("household_name", Text)
+   , '("household_id", Int)
    ]
 household = RelTable "household" implicitOrdList thing
 
-details :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "household_id" Int
-   , 'NamedTypeOf "address" Text
+details :: RelOp 
+  '[ '("household_id", Int)
+   , '("address", Text)
    ]
 details = RelTable "details" implicitOrdList thing
   
 
-toy :: RelOp SymNamedTypeOfSymbol
-  '[ 'NamedTypeOf "toy_name" Int
-   , 'NamedTypeOf "dog_id" Text
+toy :: RelOp 
+  '[ '("toy_name", Int)
+   , '("dog_id", Text)
    ]
 toy = RelTable "toy" implicitOrdList thing
 
-thing :: (rs ~ (a ': as), ListAll rs (InnerHasDefaultVector SymNamedTypeOfSymbol), RecApplicative rs) 
-  => Relation SymNamedTypeOfSymbol rs
+thing :: 
+  ( rs ~ (a ': as)
+  , ListAll rs (ConstrainSnd HasDefaultVector)
+  , RecApplicative rs
+  ) 
+  => Relation rs
 thing = RelationPresent $ rpureConstrained' 
-  (NamedWith (VectorVal G.empty)) 
-  (reifyDictFun (Proxy :: Proxy (InnerHasDefaultVector SymNamedTypeOfSymbol)) (rpure Proxy))
+  (UncurriedTaggedFunctor (VectorVal G.empty)) 
+  (reifyDictFun 
+    (Proxy :: Proxy (ConstrainSnd HasDefaultVector)) 
+    (rpure Proxy)
+  )
 

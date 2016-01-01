@@ -25,57 +25,45 @@ main = do
   -- print (sublistSubLength res)
 
 type Dog = 
-  '[ 'NamedTypeOf "dog_yaml" Bool
-   , 'NamedTypeOf "dog_type" Text
-   , 'NamedTypeOf "dog_size" Int
-   , 'NamedTypeOf "dog_name" Text
-   , 'NamedTypeOf "dog_id" Text
-   , 'NamedTypeOf "dog_gyro" Text
-   , 'NamedTypeOf "dog_falter" Text
-   , 'NamedTypeOf "dog_carsickness" Text
-   , 'NamedTypeOf "dog_breed" Text
-   , 'NamedTypeOf "dog_alive" Bool
-   , 'NamedTypeOf "dog_ailment" Text
-   , 'NamedTypeOf "dog_age" Int
+  '[ '("dog_yaml", Bool)
+   , '("dog_type", Text)
+   , '("dog_size", Int)
+   , '("dog_name", Text)
+   , '("dog_id", Text)
+   , '("dog_gyro", Text)
+   , '("dog_falter", Text)
+   , '("dog_carsickness", Text)
+   , '("dog_breed", Text)
+   , '("dog_alive", Bool)
+   , '("dog_ailment", Text)
+   , '("dog_age", Int)
    ]
 
 type OtherDog = 
-  '[ 'NamedTypeOf "dog_size" Int
-   , 'NamedTypeOf "dog_owner" Int
-   , 'NamedTypeOf "dog_name" Text
-   , 'NamedTypeOf "dog_id" Text
-   , 'NamedTypeOf "dog_breed" Text
-   , 'NamedTypeOf "dog_alive" Bool
-   , 'NamedTypeOf "dog_age" Int
+  '[ '("dog_size", Int)
+   , '("dog_owner", Int)
+   , '("dog_name", Text)
+   , '("dog_id", Text)
+   , '("dog_breed", Text)
+   , '("dog_alive", Bool)
+   , '("dog_age", Int)
    ]
 
--- bob :: Proxy (Union SymNamedTypeOfSymbol Dog OtherDog)
--- bob = Proxy
 
--- res :: _
--- res = unionSublist
---   (Proxy :: Proxy SymNamedTypeOfSymbol)
---   (implicitDictFun (Proxy :: Proxy IsNamedType) (sublistSuperToRec foo))
---   (implicitDictFun (Proxy :: Proxy IsNamedType) (sublistSuperToRec bar))
---   implicitOrdList
---   implicitOrdList
---   foo
---   bar
-
-thing :: OrdList SymNamedTypeOfSymbol Dog
+thing :: OrdList Dog
 thing = implicitOrdList
 
 bar :: Sublist Dog
-  '[ 'NamedTypeOf "dog_breed" Text
-   , 'NamedTypeOf "dog_ailment" Text
-   , 'NamedTypeOf "dog_age" Int
+  '[ '("dog_breed", Text)
+   , '("dog_ailment", Text)
+   , '("dog_age", Int)
    ]
 bar = implicitSublist
 
 foo :: Sublist OtherDog
-  '[ 'NamedTypeOf "dog_owner" Int
-   , 'NamedTypeOf "dog_breed" Text
-   , 'NamedTypeOf "dog_age" Int
+  '[ '("dog_owner", Int)
+   , '("dog_breed", Text)
+   , '("dog_age", Int)
    ]
 foo = implicitSublist
 

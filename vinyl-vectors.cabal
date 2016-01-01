@@ -38,7 +38,6 @@ library
 
     , Data.Vector.Vinyl.Default.Types
     , Data.Vector.Vinyl.Default.Types.Deriving
-    , Data.Vector.Vinyl.TypeLevel
 
     , Data.Vinyl.Named
     , Data.Vinyl.Arbitrary

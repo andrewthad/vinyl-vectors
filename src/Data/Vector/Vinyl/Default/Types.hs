@@ -28,7 +28,7 @@ import qualified Data.Vector.Generic as G
 import Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
-import Data.Vector.Vinyl.TypeLevel (Snd)
+import Data.List.TypeLevel (Snd)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 deriving instance Eq (DefaultVector t t) => Eq (VectorVal t)

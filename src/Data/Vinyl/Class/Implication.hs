@@ -4,7 +4,7 @@ import Data.Vinyl.Core (Rec(..))
 import Data.Vinyl.TypeLevel (RecAll)
 import Data.Constraint
 import Data.Proxy (Proxy(Proxy))
-import Data.Vector.Vinyl.TypeLevel (ListAll)
+import Data.List.TypeLevel (ListAll)
 
 recAllEq' :: Rec f rs -> (RecAll f rs Eq :- Eq (Rec f rs))
 recAllEq' RNil = Sub Dict

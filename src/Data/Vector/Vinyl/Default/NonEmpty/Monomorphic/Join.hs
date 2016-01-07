@@ -109,13 +109,15 @@ recFullJoinIndicesImmutable as bs =
 -- low to high. Otherwise, this may crash.
 matchingIndices ::
   ( GM.MVector v a
+  , GM.MVector u b
+  , GM.MVector w c
   , PrimMonad m
   , s ~ PrimState m
   , Ord a
   )
-  => Hybrid.MVector U.MVector v s (Int, a)
-  -> Hybrid.MVector U.MVector v s (Int, a)
-  -> m (Hybrid.MVector U.MVector U.MVector s (Int,Int))
+  => Hybrid.MVector u v s (b, a)
+  -> Hybrid.MVector w v s (c, a)
+  -> m (Hybrid.MVector u w s (b,c))
 matchingIndices as bs = do
   iaRef <- newMutVar 0
   ibRef <- newMutVar 0
@@ -203,27 +205,22 @@ whileM_ p f = go
       else return ()
 
 
--- matchingIndices ::
---   ( G.MVector v a
---   , PrimMonad m
---   , s ~ PrimState m
---   )
---   => Int -- left index
---   -> Int -- right index
---   -> Int -- resulting vector index
---   -> Int -- size of result so far
---   -> Hybrid.MVector U.MVector v s (Int, Rec Identity rs)
---   -> Hybrid.MVector U.MVector v s (Int, Rec Identity rs)
---   -> Hybrid.MVector U.MVector U.MVector (Int,Int)
---   -> m ()
--- matchingIndices ia ib ir rsize a b r = do
---   rsizeNext <- if rsize == ir 
---     then do
---       Hybrid.grow r rsize
---       return (rsize * 2)
---     else return rsize
---   
---   matchingIndices rsizeNext
+-- gives us the freedom to use anything as indices
+-- instead of just Ints
+matchingIndicesExtraImmutable :: 
+  ( G.Vector v a
+  , G.Vector u b
+  , G.Vector w c
+  , Ord a
+  )
+  => Hybrid.Vector u v (b,a)
+  -> Hybrid.Vector w v (c,a)
+  -> Hybrid.Vector u w (b,c)
+matchingIndicesExtraImmutable a b = runST $ do
+  ma <- Hybrid.thaw a
+  mb <- Hybrid.thaw b
+  mr <- matchingIndices ma mb
+  Hybrid.freeze mr
 
 pairWithIndices :: 
   ( PrimMonad m
@@ -240,10 +237,11 @@ pairWithIndices v = do
 sortWithIndices :: 
   ( Ord a
   , GM.MVector v a 
+  , GM.MVector u i
   , PrimMonad m
   , s ~ PrimState m
   )
-  => Hybrid.MVector U.MVector v s (Int,a)
+  => Hybrid.MVector u v s (i,a)
   -> m ()
 sortWithIndices v = defSortBy (\(_,a) (_,b) -> compare a b) v
  

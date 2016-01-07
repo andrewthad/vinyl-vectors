@@ -9,8 +9,8 @@ import Data.Proxy (Proxy(Proxy))
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Data.Map.Strict as Map
 import GHC.Prim (Any)
-import Data.Vinyl.Functor (Compose(..))
-import Data.Vinyl.Core (Rec(..),RecApplicative(rpure))
+import Data.Vinyl.Functor (Identity(..),Compose(..),Const(..))
+import Data.Vinyl.Core (Rec(..),RecApplicative(rpure),rtraverse)
 import Data.Vinyl.TypeLevel (RecAll)
 import Data.List.TypeLevel -- (ListAll,Fst,Snd,ConstrainFst,ConstrainSnd)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
@@ -24,77 +24,39 @@ import Data.Type.Equality ((:~:)(Refl))
 import qualified Data.Vector.Hybrid  as Hybrid
 import qualified Data.Vector.Unboxed as U
 import Data.Constraint
-import Data.Tagged
+import Data.Tagged.Functor (TaggedFunctor(..),showSymbolTaggedFunctor)
+import qualified Data.Vector.Generic as G
 import Data.Coerce (coerce)
+import Data.List.NonEmpty(NonEmpty((:|)))
 
 type RelOpConstraints = 
       (ConstrainFst TypeString :&: ConstrainSnd Typeable)
-  :&: (ConstrainSnd HasDefaultVector :&: ConstrainSnd Ord)
+  :&: (ConstrainSnd HasDefaultVector :&: ConstrainSnd Ord :&: ConstrainSnd Show)
 
 newtype UncurriedTagged (x :: (a,*)) = 
   UncurriedTagged { getUncurriedTagged :: Snd x }
-newtype TaggedFunctor (f :: b -> *) (x :: a) (y :: b) =
-  TaggedFunctor { getTaggedFunctor :: f y }
-newtype UncurriedTaggedFunctor (f :: b -> *) (x :: (a,b)) =
-  UncurriedTaggedFunctor { getUncurriedTaggedFunctor :: f (Snd x) }
-instance Eq (f (Snd x)) => Eq (UncurriedTaggedFunctor f x) where
-  UncurriedTaggedFunctor a == UncurriedTaggedFunctor b = a == b
 
--- data CmpFun               :: * -> *
--- data SymSymbol            :: CmpFun Symbol -> *
--- data SymNamedTypeOfSymbol :: CmpFun (NamedTypeOf Symbol *) -> *
--- data SymNamedType         :: CmpFun (NamedType *) -> *
--- data SymPairNamedType     :: CmpFun (PairNamedType *) -> *
--- 
--- type family ApplyCmp (f :: CmpFun k -> *) (a :: k) (b :: k) :: Ordering
--- type instance ApplyCmp SymNamedType ('NamedType name1 typ1) ('NamedType name2 typ2) = CmpSymbol name1 name2
--- type instance ApplyCmp SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) ('NamedTypeOf name2 typ2) = CmpSymbol name1 name2
--- 
--- type family ApplyType (f :: CmpFun k -> *) (a :: k) :: *
--- type instance ApplyType SymNamedType ('NamedType name1 typ1) = typ1
--- type instance ApplyType SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = typ1
--- 
--- type family ApplyKey (f :: CmpFun k -> *) (a :: k) :: n
--- type instance ApplyKey SymNamedType ('NamedType name1 typ1) = name1
--- type instance ApplyKey SymNamedTypeOfSymbol ('NamedTypeOf name1 typ1) = name1
--- 
--- newtype NamedWith (g :: CmpFun k -> *) (f :: * -> *) (a :: k) = 
---   NamedWith { getNamedWith :: f (ApplyType g a)}
--- 
--- class IsNamedType t where
---   ntName :: proxy t -> String
---   ntType :: proxy t -> TypeRep
---    
--- instance (KnownSymbol (NamedTypeKey s), Typeable (NamedTypeValue s)) => IsNamedType (s :: NamedType *) where
---   ntName _ = symbolVal (Proxy :: Proxy (NamedTypeKey s))
---   ntType _ = typeRep (Proxy :: Proxy (NamedTypeValue s))
--- 
--- instance  (KnownSymbol key, Typeable val) => IsNamedType ('NamedTypeOf key val) where
---   ntName _ = symbolVal (Proxy :: Proxy key)
---   ntType _ = typeRep (Proxy :: Proxy val)
--- 
--- class HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
--- instance HasDefaultVector (ApplyType g a) => InnerHasDefaultVector g a
+showSymbolTaggedRec :: 
+  ( ListAll as (ConstrainFst KnownSymbol) 
+  , ListAll as (ConstrainSnd Show)
+  ) => Rec (TaggedFunctor Identity) as -> String
+showSymbolTaggedRec RNil = ""
+showSymbolTaggedRec (r :& rs) = showSymbolTaggedFunctor r ++ ", " ++ showSymbolTaggedRec rs
 
--- instance Show a => Show (NamedValue ('NamedType s a)) where
---   show (NamedValue v) = show v
--- instance Eq a => Eq (NamedValue ('NamedType s a)) where
---   NamedValue a == NamedValue b = a == b
--- instance Arbitrary a => Arbitrary (NamedValue ('NamedType s a)) where
---   arbitrary = fmap NamedValue arbitrary
---   shrink (NamedValue v) = fmap NamedValue (shrink v)
+recToProxy :: Rec proxy rs -> Rec Proxy rs
+recToProxy RNil = RNil
+recToProxy (_ :& rs) = Proxy :& recToProxy rs
 
-type family ZipNames (ks :: [k]) (vs :: [v]) where
-  ZipNames '[] '[] = '[]
-  ZipNames (k ': ks) (v ': vs) = ('(k,v) ': ZipNames ks vs)
+rtraverseIdentity :: Applicative f => Rec f rs -> f (Rec Identity rs)
+rtraverseIdentity = rtraverse (fmap Identity)
 
--- instance KnownSymbol s => NamedTypeKnownSymbol ('NamedType s a)
+type family PairsSnd (as :: [(k,v)]) :: [v] where
+  PairsSnd '[] = '[]
+  PairsSnd (a ': as) = Snd a ': PairsSnd as
 
--- toProxyRec :: forall proxy rs. Rec proxy rs -> Rec NamedProxy rs
--- toProxyRec RNil = RNil
--- toProxyRec ((_ :: proxy r) :& rs) = 
---   (NamedProxy :: NamedProxy r) :& toProxyRec rs
-
+type family Zip (ks :: [k]) (vs :: [v]) :: [(k,v)] where
+  Zip '[] '[] = '[]
+  Zip (k ': ks) (v ': vs) = ('(k,v) ': Zip ks vs)
 
 ------------------------------------
 -- Vector related stuff
@@ -104,51 +66,87 @@ type ListAllJoinConstraints rs =
   ( ListAll rs Typeable 
   , ListAll rs Ord
   , ListAll rs HasDefaultVector
+  , ListAll rs Show
   )
 type JoinConstraints r = 
   ( Typeable r
   , Ord r
   , HasDefaultVector r
+  , Show r
   )
-
--- everyTypeable :: Rec proxy1 rs -> (ListAll rs Every :- ListAll rs Typeable)
--- everyTypeable RNil = Sub Dict
--- everyTypeable (_ :& rs) = Sub $ case everyTypeable rs of
---   Sub Dict -> Dict
 
 data HiddenVector where
   HiddenVector :: forall (a :: *). 
     JoinConstraints a => 
     VectorVal a -> HiddenVector
 
+instance Show HiddenVector where
+  show (HiddenVector (VectorVal a)) = "HiddenVector (" ++ show (G.toList a) ++ ")"
+
 data HiddenRec (f :: * -> *) where
   HiddenRec :: forall (rs :: [*]) (f :: * -> *). 
     ListAllJoinConstraints rs => 
     Rec f rs -> HiddenRec f
 
-data ConstrainedHiddenRec (f :: * -> *) (c :: * -> Constraint) where
-  ConstrainedHiddenRec :: RecAll f rs c => Rec f rs -> ConstrainedHiddenRec f c
+data NonEmptyHiddenRec (f :: * -> *) where
+  NonEmptyHiddenRec :: forall (r :: *) (rs :: [*]) (f :: * -> *). 
+    ListAllJoinConstraints (r ': rs) => 
+    Rec f (r ': rs) -> NonEmptyHiddenRec f
+
+-- data ConstrainedNonEmptyHiddenRec (f :: * -> *) (c :: * -> Constraint) where
+--   ConstrainedNonEmptyHiddenRec :: 
+--     RecAll f (r ': rs) c => Rec f (r ': rs) -> ConstrainedNonEmptyHiddenRec f c
 
 -- This only works if `rs` does not contain duplicate names
-indexedHiddenVectorMapsToRec :: forall rs proxy.
+-- indexedHiddenVectorMapsToRec :: forall rs proxy.
+--   ( ListAll rs (ConstrainFst TypeString)
+--   , ListAll rs (ConstrainSnd Typeable)
+--   , ListAll rs (ConstrainSnd HasDefaultVector)
+--   )
+--   => Rec proxy rs
+--   -> [(U.Vector Int, Map String HiddenVector)]
+--   -> Rec (TaggedFunctor VectorVal) rs
+-- indexedHiddenVectorMapsToRec RNil m = if and (map (Map.null . snd) m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
+-- indexedHiddenVectorMapsToRec ((_ :: proxy r) :& rs) m = case lookupHelper keyStr m of
+--   (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (Snd r :~: a)) of
+--     Just Refl -> TaggedFunctor (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec rs mnext
+--     Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
+--   where 
+--   keyStr = (typeString (Proxy :: Proxy (Fst r)))
+
+-- This only works if `rs` does not contain duplicate names
+indexedHiddenVectorMapsToRec :: 
   ( ListAll rs (ConstrainFst TypeString)
   , ListAll rs (ConstrainSnd Typeable)
   , ListAll rs (ConstrainSnd HasDefaultVector)
   )
   => Rec proxy rs
   -> [(U.Vector Int, Map String HiddenVector)]
-  -> Rec (UncurriedTaggedFunctor VectorVal) rs
-indexedHiddenVectorMapsToRec RNil m = if and (map (Map.null . snd) m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
-indexedHiddenVectorMapsToRec ((_ :: proxy r) :& rs) m = case lookupHelper keyStr m of
-  (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (Snd r :~: a)) of
-    Just Refl -> UncurriedTaggedFunctor (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec rs mnext
-    Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
-  where 
-  keyStr = (typeString (Proxy :: Proxy (Fst r)))
+  -> Rec (TaggedFunctor VectorVal) rs
+indexedHiddenVectorMapsToRec prec = go prec . mkMap
+  where
+  mkMap xs = -- Map.unionsWith (\_ _ -> error "indexedHiddenVectorMapsToRec: duplicate field") 
+    Map.unions $ map (\(ixs,m) -> fmap (\h -> (ixs,h)) m) xs
+  go :: forall rs proxy.
+        ( ListAll rs (ConstrainFst TypeString)
+        , ListAll rs (ConstrainSnd Typeable)
+        , ListAll rs (ConstrainSnd HasDefaultVector)
+        )
+     => Rec proxy rs
+     -> Map String (U.Vector Int, HiddenVector)
+     -> Rec (TaggedFunctor VectorVal) rs
+  go RNil m = if Map.null m then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
+  go ((_ :: proxy r) :& rs) m = case lookupHelper keyStr m of
+    ((i,HiddenVector (VectorVal v :: VectorVal a)), mnext) -> case (eqT :: Maybe (Snd r :~: a)) of
+      Just Refl -> TaggedFunctor (VectorVal (indexMany i v)) :& go rs mnext
+      Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
+    where keyStr = (typeString (Proxy :: Proxy (Fst r)))
 
 -- unchecked, still needs to be written
-lookupHelper :: String -> [(a, Map String b)] -> (a,b,[(a,Map String b)])
-lookupHelper = error "lookupHelper: write me"
+lookupHelper :: String -> Map String a -> (a, Map String a)
+lookupHelper name m = case Map.lookup name m of
+  Nothing -> error ("lookupHelper: missing name " ++ name)
+  Just a  -> (a, Map.delete name m)
 
 -- This function is partial.
 hiddenVectorMapToRec :: forall rs m proxy.
@@ -157,11 +155,11 @@ hiddenVectorMapToRec :: forall rs m proxy.
   )
   => Rec proxy rs
   -> Map String HiddenVector
-  -> Rec (UncurriedTaggedFunctor VectorVal) rs
+  -> Rec (TaggedFunctor VectorVal) rs
 hiddenVectorMapToRec RNil m = if Map.null m then RNil else error "hiddenVectorMapToRec: should be empty"
 hiddenVectorMapToRec ((_ :: proxy r) :& rs) m = case Map.lookup keyStr m of 
   Just (HiddenVector (v :: VectorVal a)) -> case (eqT :: Maybe (Snd r :~: a)) of
-    Just Refl -> UncurriedTaggedFunctor v :& hiddenVectorMapToRec rs (Map.delete keyStr m)
+    Just Refl -> TaggedFunctor v :& hiddenVectorMapToRec rs (Map.delete keyStr m)
     Nothing   -> error ("hiddenVectorMapToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
   Nothing -> error ("hiddenVectorMapToRec: missing key " ++ keyStr)
   where keyStr = (typeString (Proxy :: Proxy (Fst r)))
@@ -169,10 +167,10 @@ hiddenVectorMapToRec ((_ :: proxy r) :& rs) m = case Map.lookup keyStr m of
 recToHiddenVectorMap :: forall rs. 
   ( ListAll rs RelOpConstraints
   )
-  => Rec (UncurriedTaggedFunctor VectorVal) rs 
+  => Rec (TaggedFunctor VectorVal) rs 
   -> Map String HiddenVector
 recToHiddenVectorMap RNil = Map.empty
-recToHiddenVectorMap (u@(UncurriedTaggedFunctor v) :& rs) = 
+recToHiddenVectorMap (u@(TaggedFunctor v) :& rs) = 
   Map.insert 
     (typeString (proxyFst u))
     (HiddenVector v)
@@ -187,6 +185,9 @@ hiddenVectorsToHiddenRec dvs = case dvs of
   HiddenVector v : dvsNext -> case hiddenVectorsToHiddenRec dvsNext of
     HiddenRec rec -> HiddenRec (v :& rec)
 
+nonEmptyHiddenVectorsToHiddenRec :: NonEmpty HiddenVector -> NonEmptyHiddenRec VectorVal
+nonEmptyHiddenVectorsToHiddenRec (HiddenVector a :| as) = case hiddenVectorsToHiddenRec as of
+  HiddenRec rs -> NonEmptyHiddenRec (a :& rs)
 
 uncheckedFullJoinIndices :: 
      [(String,String)] 
@@ -238,13 +239,13 @@ uncheckedEqT _ _ = case (eqT :: Maybe (a :~: b)) of
 
 -- A convenience function
 zipNamesExplicit :: forall f proxy ks vs. 
-  Rec proxy ks -> Rec f vs -> Rec (UncurriedTaggedFunctor f) (ZipNames ks vs)
+  Rec proxy ks -> Rec f vs -> Rec (TaggedFunctor f) (Zip ks vs)
 zipNamesExplicit RNil RNil = RNil
 zipNamesExplicit ((_ :: proxy k) :& ks) ((r :: f v) :& rs) = 
-  (UncurriedTaggedFunctor r :: UncurriedTaggedFunctor f '(k, v)) :& zipNamesExplicit ks rs
+  (TaggedFunctor r :: TaggedFunctor f '(k, v)) :& zipNamesExplicit ks rs
 
 zipNames :: forall f proxy ks vs. RecApplicative ks
-  => proxy ks -> Rec f vs -> Rec (UncurriedTaggedFunctor f) (ZipNames ks vs)
+  => proxy ks -> Rec f vs -> Rec (TaggedFunctor f) (Zip ks vs)
 zipNames _ = zipNamesExplicit (rpure Proxy :: Rec Proxy ks)
 
 class RecApplicativeConstrained (c :: k -> Constraint) (rs :: [k]) where
@@ -259,7 +260,7 @@ instance (RecApplicativeConstrained c rs, c r) => RecApplicativeConstrained c (r
 
 rpureConstrained' :: (forall x. c x => f x) -> Rec (DictFun c) rs -> Rec f rs
 rpureConstrained' _ RNil = RNil
-rpureConstrained' f (DictFun Dict :& rs) = f :& rpureConstrained' f rs
+rpureConstrained' f (DictFun :& rs) = f :& rpureConstrained' f rs
 
 -- data NamedValue (a :: NamedType *) where
 --   NamedValue :: val -> NamedValue ('NamedType key val)

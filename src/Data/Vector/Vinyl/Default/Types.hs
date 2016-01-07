@@ -29,10 +29,12 @@ import Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
 import Data.List.TypeLevel (Snd)
+import Data.Time (Day)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 deriving instance Eq (DefaultVector t t) => Eq (VectorVal t)
 deriving instance Ord (DefaultVector t t) => Ord (VectorVal t)
+deriving instance Show (DefaultVector t t) => Show (VectorVal t)
 
 newtype MVectorVal s t = MVectorVal { getMVectorVal :: G.Mutable (DefaultVector t) s t }
 newtype DefaultBoxed a = DefaultBoxed { getDefaultBoxed :: a }
@@ -75,6 +77,13 @@ instance HasDefaultVector Word32 where
   type DefaultVector Word32 = U.Vector
 instance HasDefaultVector Word64 where
   type DefaultVector Word64 = U.Vector
+
+-- time related vectors
+-- oddly, since a Day is an Integer and not
+-- an Int, we can't get a good unboxed
+-- representation.
+instance HasDefaultVector Day where
+  type DefaultVector Day = B.Vector
 
 instance HasDefaultVector [a] where
   type DefaultVector [a] = B.Vector

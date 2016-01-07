@@ -15,7 +15,7 @@
 
 module Data.List.TypeLevel where
 
-import GHC.TypeLits
+import GHC.TypeLits hiding (Nat)
 -- import Data.Vinyl.Named
 import Data.Proxy
 import Data.Type.Equality
@@ -26,16 +26,35 @@ import Unsafe.Coerce (unsafeCoerce)
 import Data.Typeable
 import GHC.Exts (Constraint)
 import Data.Vinyl.TypeLevel (RecAll)
+import Data.Type.Bool
 
 data DictFun (c :: k -> Constraint) (a :: k) where
-  DictFun :: Dict (c a) -> DictFun c a
+  DictFun :: c a => DictFun c a
 
 dictFunOf :: Proxy c -> Dict (c a) -> DictFun c a
-dictFunOf _ d = DictFun d
+dictFunOf _ Dict = DictFun
 
 reifyDictFun :: ListAll rs c => proxy1 c -> Rec proxy2 rs -> Rec (DictFun c) rs
 reifyDictFun _ RNil = RNil
-reifyDictFun p (_ :& rs) = DictFun Dict :& reifyDictFun p rs
+reifyDictFun p (_ :& rs) = DictFun :& reifyDictFun p rs
+
+data Nat = Zero | Succ Nat
+
+data Natty :: Nat -> * where
+  Zeroy :: Natty Zero
+  Succy :: Natty n -> Natty (Succ n)
+
+class HasNatty (n :: Nat) where
+  natty :: Natty n
+instance HasNatty Zero where
+  natty = Zeroy
+instance HasNatty n => HasNatty (Succ n) where
+  natty = Succy natty
+
+-- unneeded
+type family AllAre a ts :: Constraint where
+  AllAre a '[] = ()
+  AllAre a (t ': ts) = (t ~ a, AllAre a ts)
 
 -- | A constraint on each element of a type-level list.
 type family ListAll (ts :: [k]) (c :: k -> Constraint) :: Constraint where
@@ -58,7 +77,7 @@ instance c (Snd x) => ConstrainSnd c x
 
 implicitDictFun :: ListAll rs c => proxy c -> Rec proxy2 rs -> Rec (DictFun c) rs
 implicitDictFun _ RNil = RNil
-implicitDictFun c (_ :& rs) = DictFun Dict :& implicitDictFun c rs
+implicitDictFun c (_ :& rs) = DictFun :& implicitDictFun c rs
 
 projectRec :: Sublist super sub -> Rec f super -> Rec f sub
 projectRec s r = case s of
@@ -85,7 +104,7 @@ unionRec ::
 unionRec RNil RNil = RNil
 unionRec (l :& ls) RNil = l :& unionRec ls RNil
 unionRec RNil (r :& rs) = r :& unionRec RNil rs
-unionRec ls@(l@(DictFun Dict) :& lsNext) rs@(r@(DictFun Dict) :& rsNext) = case applyCmpString (proxyFst l) (proxyFst r) of
+unionRec ls@(l@DictFun :& lsNext) rs@(r@DictFun :& rsNext) = case applyCmpString (proxyFst l) (proxyFst r) of
   LTy -> r :& unionRec ls rsNext
   GTy -> l :& unionRec lsNext rs 
   EQy -> case eqTProxy (proxySnd l) (proxySnd r) of
@@ -318,6 +337,12 @@ sublistHeadGte = go
   go (SublistBoth SublistNil) OrdListSingle = Right Refl
   go (SublistBoth _) (OrdListCons _) = Right Refl
 
+type family Append (s :: [k]) (t :: [k]) :: [k] where
+  Append '[] t = t
+  Append (x ': xs) ys = x ': (Append xs ys)
+
+type a ++ b = Append a b
+
 -- This is NOT total.
 type family Union (a :: [(k,v)]) (b :: [(k,v)]) :: [(k,v)] where
   Union '[] '[] = '[]
@@ -329,6 +354,19 @@ type family UnionCmp (o :: Ordering) (a :: (k,v)) (as :: [(k,v)]) (b :: (k,v)) (
   UnionCmp LT a as b bs = b ': Union (a ': as) bs
   UnionCmp EQ a as b bs = a ': Union as bs
   UnionCmp GT a as b bs = a ': Union as (b ': bs)
+
+data FilterFlag = FMin | FMax
+
+type family Sort (a :: [(k,v)]) :: [(k,v)] where
+  Sort '[] = '[]
+  Sort ( '(k,v) ': xs) = Sort (Filter FMax k xs) ++ '[ '(k,v)] ++ Sort (Filter FMin k xs) 
+
+-- rewrite to make this way more efficient
+type family Filter (f :: FilterFlag) (p :: k) (xs :: [(k,v)]) :: [(k,v)] where
+  Filter f p '[] = '[]
+  Filter FMin p ( '(k,v) ': xs) = If (Cmp k p == LT) ( '(k,v) ': (Filter FMin p xs)) (Filter FMin p xs) 
+  Filter FMax p ( '(k,v) ': xs) = If (Cmp k p == GT || Cmp k p == EQ) ( '(k,v) ': (Filter FMax p xs)) (Filter FMax p xs) 
+
 
 unionSublist :: 
      Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) superA 
@@ -357,7 +395,7 @@ unionSublist = go
       (go RNil drs OrdListNil (ordListTail ornext) SublistNil snext)
     SublistSuper snext -> 
       SublistSuper (go RNil drs OrdListNil (ordListTail ornext) SublistNil snext)
-  go dls@(dl@(DictFun Dict) :& dlsNext) drs@(dr@(DictFun Dict) :& drsNext) olnext ornext subl subr = case subl of
+  go dls@(dl@DictFun :& dlsNext) drs@(dr@DictFun :& drsNext) olnext ornext subl subr = case subl of
     SublistBoth slnext -> case subr of
       SublistBoth srnext -> case applyCmpString (proxyFst dl) (proxyFst dr) of
         LTy -> SublistBoth (go dls drsNext olnext (ordListTail ornext) subl srnext)
@@ -475,7 +513,14 @@ weakenRecDictFun :: forall c1 c2 proxy rs.
   -> Rec (DictFun c1) rs 
   -> Rec (DictFun c2) rs
 weakenRecDictFun _ _ RNil = RNil
-weakenRecDictFun p ent ((DictFun Dict :: DictFun c1 r) :& rs) = case (ent :: (c1 r :- c2 r))  of
-  Sub Dict -> DictFun Dict :& weakenRecDictFun p ent rs
+weakenRecDictFun p ent ((DictFun :: DictFun c1 r) :& rs) = case (ent :: (c1 r :- c2 r))  of
+  Sub Dict -> DictFun :& weakenRecDictFun p ent rs
+
+recDictFunToDict :: Rec (DictFun c) rs -> Dict (ListAll rs c)
+recDictFunToDict RNil = Dict
+recDictFunToDict (DictFun :& rs) = case recDictFunToDict rs of
+  Dict -> Dict
+
+
 
 

@@ -21,7 +21,6 @@
 module Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
   ( MVector(..)
   , Vector(..)
-  , HasDefaultVector(..)
   ) where
 
 import Control.Monad

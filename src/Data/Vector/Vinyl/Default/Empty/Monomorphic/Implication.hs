@@ -18,6 +18,7 @@
 module Data.Vector.Vinyl.Default.Empty.Monomorphic.Implication where
 
 import Data.Constraint
+import Data.Vector.Vinyl.Default.Types (HasDefaultVector)
 import Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
 import Data.Vinyl.Core (Rec(..))
 import Data.Vinyl.Functor (Identity(..))

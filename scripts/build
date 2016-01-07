@@ -1,0 +1,8 @@
+#!/bin/bash
+clear
+stack build 2>&1 | \
+  grep -EA1 '^    [^: ]+:[0-9]+:[0-9]+:' | \
+  sed -E 's/^ +//' | \
+  sed '/--/d' | \
+  sed 'N;s/\n/ /' | \
+  grep -v 'Warning:'

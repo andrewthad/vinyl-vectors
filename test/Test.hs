@@ -1,5 +1,7 @@
 module Main where
 
+import Test.Relation
+
 import Data.Monoid (mempty)
 import Test.Framework (defaultMain, defaultMainWithOpts, testGroup)
 import Test.Framework.Options (TestOptions, TestOptions'(..))
@@ -25,7 +27,6 @@ import Control.Exception (SomeException(..))
 
 import Data.Vinyl.Core (Rec(..),rtraverse)
 import qualified Data.Vinyl.Named as Named
-import Data.Vinyl.Named (NamedValue(..), NamedType(..))
 import Data.Vinyl.Arbitrary (ArbitraryRec(..))
 import Data.Vinyl.Functor (Identity(..),Compose(..))
 
@@ -37,31 +38,7 @@ tests =
   [ testGroup "Correctness of Algorithms" 
     [ testProperty "Full Join Indices" correctFullJoinIndices
     ]
-  , testGroup "Unsafe Named Record Operations"
-    [ testProperty "To and from forms identity" namedRecordIdentity
-    , testProperty "To and from composed variants form identity" composedNamedRecordIdentity
-    , testProperty "To and from named vector forms identity" namedVectorRecordIdentity
-    ]
   ]
-
-namedVectorRecordIdentity :: [(Int,Bool)] -> Bool
-namedVectorRecordIdentity xs = 
-  namedVecs == 
-  Named.hiddenVectorMapToRec namedVecs (Named.recToHiddenVectorMap namedVecs)
-  where
-  namedVecs = Named.zipNames (Proxy :: Proxy '["age","living"]) vecRecs 
-  vecRecs :: Rec VectorVal '[Int,Bool]
-  vecRecs = case Vinyl.fromList (map (\(i,b) -> Identity i :& Identity b :& RNil) xs) of
-    Vinyl.V v -> v
-
-namedRecordIdentity :: ArbitraryRec NamedValue 
-  '[ 'NamedType "age" Int
-   , 'NamedType "name" String
-   , 'NamedType "active" Bool
-   , 'NamedType "speed" Double
-   ] -> Bool
-namedRecordIdentity (ArbitraryRec r) = 
-  r == (Named.fromDynamicMap r . Named.toDynamicMap) r
 
 correctFullJoinIndices :: [Int] -> [Int] -> Property.Result
 correctFullJoinIndices as bs = if actual == expected
@@ -99,3 +76,27 @@ correctFullJoinIndices as bs = if actual == expected
 --   toRecs :: Rec (Compose Maybe NamedValue) rs -> Maybe (Rec NamedValue rs)
 --   toRecs = rtraverse (\(Compose xs) -> xs)
 
+-- namedVectorRecordIdentity :: [(Int,Bool)] -> Bool
+-- namedVectorRecordIdentity xs = 
+--   namedVecs == 
+--   Named.hiddenVectorMapToRec namedVecs (Named.recToHiddenVectorMap namedVecs)
+--   where
+--   namedVecs = Named.zipNames (Proxy :: Proxy '["age","living"]) vecRecs 
+--   vecRecs :: Rec VectorVal '[Int,Bool]
+--   vecRecs = case Vinyl.fromList (map (\(i,b) -> Identity i :& Identity b :& RNil) xs) of
+--     Vinyl.V v -> v
+-- 
+-- namedRecordIdentity :: ArbitraryRec NamedValue 
+--   '[ 'NamedType "age" Int
+--    , 'NamedType "name" String
+--    , 'NamedType "active" Bool
+--    , 'NamedType "speed" Double
+--    ] -> Bool
+-- namedRecordIdentity (ArbitraryRec r) = 
+--   r == (Named.fromDynamicMap r . Named.toDynamicMap) r
+
+-- , testGroup "Unsafe Named Record Operations"
+--   [ testProperty "To and from forms identity" namedRecordIdentity
+--   , testProperty "To and from composed variants form identity" composedNamedRecordIdentity
+--   , testProperty "To and from named vector forms identity" namedVectorRecordIdentity
+--   ]

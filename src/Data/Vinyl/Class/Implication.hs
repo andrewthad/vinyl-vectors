@@ -1,10 +1,15 @@
+{-# LANGUAGE PolyKinds #-}
+
 module Data.Vinyl.Class.Implication where
 
 import Data.Vinyl.Core (Rec(..))
 import Data.Vinyl.TypeLevel (RecAll)
 import Data.Constraint
 import Data.Proxy (Proxy(Proxy))
-import Data.List.TypeLevel (ListAll)
+import Data.List.TypeLevel (ListAll,eqTProxy,ConstrainSnd,Snd)
+import Data.Typeable
+import Data.Type.Equality ((:~:)(Refl))
+import Data.Tagged.Functor (TaggedFunctor(..))
 
 recAllEq' :: Rec f rs -> (RecAll f rs Eq :- Eq (Rec f rs))
 recAllEq' RNil = Sub Dict
@@ -41,3 +46,21 @@ listAllToRecAll c f ((_ :: proxy r) :& rs) cEntail =
     Sub Dict -> case (cEntail :: (c r :- c (f r))) of
       Sub Dict -> Dict
 
+listAllToTaggedRecAll :: forall (c :: * -> Constraint) f (rs :: [(k,*)]) proxy. 
+  Proxy c -> Proxy f -> Rec proxy rs 
+  -> (forall (a :: (k,*)). c (Snd a) :- c (TaggedFunctor f a)) 
+  -> (ListAll rs (ConstrainSnd c) :- RecAll (TaggedFunctor f) rs c)
+listAllToTaggedRecAll _ _ RNil _ = Sub Dict
+listAllToTaggedRecAll c f ((_ :: proxy r) :& rs) cEntail = 
+  Sub $ case listAllToTaggedRecAll c f rs cEntail of
+    Sub Dict -> case (cEntail :: (c (Snd r) :- c (TaggedFunctor f r))) of
+      Sub Dict -> Dict
+
+eqTRec :: (ListAll rs Typeable, ListAll ss Typeable)
+  => Rec proxy rs -> Rec proxy ss -> Maybe (rs :~: ss)
+eqTRec RNil RNil = Just Refl
+eqTRec (r :& rs) (s :& ss) = case eqTProxy r s of
+  Nothing -> Nothing
+  Just Refl -> case eqTRec rs ss of
+    Nothing -> Nothing
+    Just Refl -> Just Refl

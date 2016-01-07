@@ -28,6 +28,10 @@ library
     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Internal
     , Data.Vector.Vinyl.Default.Empty.Monomorphic.Mutable
 
+    , Data.Vector.Vinyl.Default.NonEmpty.Tagged
+    , Data.Vector.Vinyl.Default.NonEmpty.Tagged.Internal
+    , Data.Vector.Vinyl.Default.NonEmpty.Tagged.Implication
+
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
@@ -39,15 +43,24 @@ library
     , Data.Vector.Vinyl.Default.Types
     , Data.Vector.Vinyl.Default.Types.Deriving
 
+    , Data.Vector.Vec
+    , Data.Vector.Vec.Internal
+
+    , Data.Vinyl.List
     , Data.Vinyl.Named
     , Data.Vinyl.Arbitrary
     , Data.Vinyl.Class.Implication
 
+    , Data.Vec
     , Data.Relation
+    , Data.Relation.Run.Naive
+    , Data.Relation.Run.Basic
     , Data.Dynamic.Constraint
     , Data.List.TypeLevel
     , Data.List.Symbol
     , Data.Proxy.TH
+    , Data.Tagged.Functor
+    , Data.Vinyl.Random
   build-depends:       
       base              >= 4.7     && < 5
     , QuickCheck        >= 2.8.0
@@ -67,6 +80,8 @@ library
     , semigroups        >= 0.16
     , fgl
     , tagged            >= 0.8     && < 0.9
+    , time              >= 1.5     && < 1.6
+    , random            >= 1.1     && < 1.2
   default-extensions:
     KindSignatures
     StandaloneDeriving
@@ -84,7 +99,7 @@ library
     -- Don't enable PolyKinds. It makes the vector
     -- stuff freak out.
   default-language:    Haskell2010
-  ghc-options: -Wall -O2 
+  ghc-options: -Wall -O2 -ddump-minimal-imports
 
 -- executable sorting
 --   if !flag(examples)
@@ -129,6 +144,7 @@ executable query
       , text              >= 0.8.0.0
       , vector            >= 0.10 && < 0.12
       , constraints       >= 0.4
+      , random            >= 1.1 && < 1.2
   hs-source-dirs: examples
   default-language: Haskell2010
   ghc-options: -O2 -ddump-tc -ddump-parsed
@@ -162,10 +178,15 @@ test-suite             vinyl-vectors-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Test.hs
+  other-modules:       Test.Relation
   default-language: Haskell2010
   default-extensions:  
     TypeFamilies
     DataKinds
+    TemplateHaskell
+    QuasiQuotes
+    OverloadedStrings
+    PolyKinds
   build-depends:       
       vinyl-vectors
     , HUnit             >= 1.2
@@ -175,6 +196,8 @@ test-suite             vinyl-vectors-test
     , test-framework    >= 0.8
     , test-framework-hunit    
     , test-framework-quickcheck2
+    , text
+    , time
     , vector            >= 0.10 && < 0.12
     , vinyl             >= 0.5.1 && < 0.6.0
 

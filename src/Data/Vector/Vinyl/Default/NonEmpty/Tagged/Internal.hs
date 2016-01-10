@@ -1,19 +1,19 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 #ifndef MIN_VERSION_vector
 #define MIN_VERSION_vector(x,y,z) 1
@@ -24,40 +24,44 @@ module Data.Vector.Vinyl.Default.NonEmpty.Tagged.Internal
   , Vector(..)
   ) where
 
-import Control.Monad
-import Data.Monoid
-import Data.Typeable (Typeable)
-import GHC.Exts (Constraint)
-import Control.Monad.Primitive (PrimMonad,PrimState)
-import qualified Data.Vector.Generic.Mutable as GM
-import qualified Data.Vector.Generic as G
+import           Control.Monad
+import           Control.Monad.Primitive         (PrimMonad, PrimState)
+import           Data.Monoid
+import           Data.Typeable                   (Typeable)
+import qualified Data.Vector.Generic             as G
+import qualified Data.Vector.Generic.Mutable     as GM
+import           GHC.Exts                        (Constraint)
 
+
+import           Data.Proxy
+import           Prelude                         hiding (drop, init, length,
+                                                  map, null, read, replicate,
+                                                  reverse, tail, take)
+import           Text.Read
+
+import           Data.Vector.Vinyl.Default.Types (HasDefaultVector (..),
+                                                  MVectorVal (..),
+                                                  VectorVal (..))
+import           Data.Vinyl.Core                 (Rec (..))
+import           Data.Vinyl.Functor              (Identity (..))
+
+import           Data.Tagged.Functor             (TaggedFunctor (..))
+import           Data.Tuple.TypeLevel            (Snd)
 #if MIN_VERSION_vector(0,11,0)
-import Data.Vector.Fusion.Bundle as Stream
+import           Data.Vector.Fusion.Bundle       as Stream
 #else
-import Data.Vector.Fusion.Stream as Stream
+import           Data.Vector.Fusion.Stream       as Stream
 #endif
 
-import Prelude hiding ( length, null, replicate, reverse, map, read, take, drop, init, tail )
-import Text.Read
-import Data.Proxy
-
-import Data.Vinyl.Core(Rec(..))
-import Data.Vinyl.Functor (Identity(..))
-import Data.Vector.Vinyl.Default.Types (VectorVal(..),MVectorVal(..),HasDefaultVector(..))
-
-import Data.Tagged.Functor (TaggedFunctor(..))
-import Data.List.TypeLevel (Snd)
-
 data Vector :: KProxy k -> * -> * where
-  V :: forall (k :: KProxy a) (rs :: [(a,*)]). 
-       !(Rec (TaggedFunctor VectorVal) rs) 
+  V :: forall (k :: KProxy a) (rs :: [(a,*)]).
+       !(Rec (TaggedFunctor VectorVal) rs)
     -> Vector k (Rec (TaggedFunctor Identity) rs)
   deriving Typeable
 
 data MVector :: KProxy k -> * -> * -> * where
-  MV :: forall (k :: KProxy a) (rs :: [(a,*)]) s. 
-        !(Rec (TaggedFunctor (MVectorVal s)) rs) 
+  MV :: forall (k :: KProxy a) (rs :: [(a,*)]) s.
+        !(Rec (TaggedFunctor (MVectorVal s)) rs)
      -> MVector k s (Rec (TaggedFunctor Identity) rs)
   deriving Typeable
 
@@ -68,14 +72,14 @@ instance ( HasDefaultVector (Snd r)
   {-# INLINE basicLength #-}
   basicUnsafeSlice s e (MV (TaggedFunctor (MVectorVal v) :& RNil)) = MV (TaggedFunctor (MVectorVal (GM.basicUnsafeSlice s e v)) :& RNil)
   {-# INLINE basicUnsafeSlice #-}
-  basicOverlaps (MV (TaggedFunctor (MVectorVal a) :& RNil)) (MV (TaggedFunctor (MVectorVal b) :& RNil)) = GM.basicOverlaps a b 
+  basicOverlaps (MV (TaggedFunctor (MVectorVal a) :& RNil)) (MV (TaggedFunctor (MVectorVal b) :& RNil)) = GM.basicOverlaps a b
   {-# INLINE basicOverlaps #-}
   basicUnsafeNew n = do
-    r <- GM.basicUnsafeNew n 
+    r <- GM.basicUnsafeNew n
     return (MV (TaggedFunctor (MVectorVal r) :& RNil))
   {-# INLINE basicUnsafeNew #-}
   basicUnsafeReplicate n (TaggedFunctor (Identity v) :& RNil) = do
-    r <- GM.basicUnsafeReplicate n v 
+    r <- GM.basicUnsafeReplicate n v
     return (MV (TaggedFunctor (MVectorVal r) :& RNil))
   {-# INLINE basicUnsafeReplicate #-}
   basicUnsafeRead (MV (TaggedFunctor (MVectorVal v) :& RNil)) n = do
@@ -110,23 +114,23 @@ instance ( GM.MVector (MVector k) (Rec (TaggedFunctor Identity) (s ': rs))
   {-# INLINE basicLength #-}
 
   basicUnsafeSlice s e (MV (TaggedFunctor (MVectorVal v) :& rs)) = case GM.basicUnsafeSlice s e (kMV (Proxy :: Proxy k) rs) of
-    MV rsNext -> kMV (Proxy :: Proxy k) 
+    MV rsNext -> kMV (Proxy :: Proxy k)
       (TaggedFunctor (MVectorVal (GM.basicUnsafeSlice s e v)) :& rsNext)
   {-# INLINE basicUnsafeSlice #-}
 
-  basicOverlaps (MV (TaggedFunctor (MVectorVal a) :& as)) (MV (TaggedFunctor (MVectorVal b) :& bs)) = 
+  basicOverlaps (MV (TaggedFunctor (MVectorVal a) :& as)) (MV (TaggedFunctor (MVectorVal b) :& bs)) =
     GM.basicOverlaps a b || GM.basicOverlaps (kMV (Proxy :: Proxy k) as) (kMV (Proxy :: Proxy k) bs)
   {-# INLINE basicOverlaps #-}
 
-  basicUnsafeNew :: forall m. PrimMonad m 
+  basicUnsafeNew :: forall m. PrimMonad m
     => Int -> m (MVector k (PrimState m) (Rec (TaggedFunctor Identity) (r ': s ': rs)))
-  basicUnsafeNew n = 
+  basicUnsafeNew n =
     consVec (Proxy :: Proxy m) (Proxy :: Proxy r) <$> GM.basicUnsafeNew n <*> GM.basicUnsafeNew n
   {-# INLINE basicUnsafeNew #-}
-  
-  basicUnsafeReplicate :: forall m. PrimMonad m 
+
+  basicUnsafeReplicate :: forall m. PrimMonad m
     => Int -> Rec (TaggedFunctor Identity) (r ': s ': rs) -> m (MVector k (PrimState m) (Rec (TaggedFunctor Identity) (r ': s ': rs)))
-  basicUnsafeReplicate n (TaggedFunctor (Identity v) :& rs) = 
+  basicUnsafeReplicate n (TaggedFunctor (Identity v) :& rs) =
     consVec (Proxy :: Proxy m) (Proxy :: Proxy r) <$> GM.basicUnsafeReplicate n v <*> GM.basicUnsafeReplicate n rs
   {-# INLINE basicUnsafeReplicate #-}
 
@@ -160,14 +164,14 @@ instance ( GM.MVector (MVector k) (Rec (TaggedFunctor Identity) (s ': rs))
     GM.basicUnsafeMove a b
     GM.basicUnsafeMove (kMV (Proxy :: Proxy k) as) (kMV (Proxy :: Proxy k) bs)
   {-# INLINE basicUnsafeMove #-}
--- 
+--
 --   basicUnsafeGrow :: forall m. PrimMonad m => MVector (PrimState m) (Rec (TaggedFunctor Identity) (r ': s ': rs)) -> Int -> m (MVector (PrimState m) (Rec (TaggedFunctor Identity) (r ': s ': rs)))
 --   basicUnsafeGrow (MV (TaggedFunctor (MVectorVal v) :& vrs)) n = do
 --     r <- GM.basicUnsafeGrow v n
 --     rs <- GM.basicUnsafeGrow (MV vrs) n
 --     return (MV (TaggedFunctor (MVectorVal r) :& stripMV (Proxy :: Proxy m) rs))
 --   {-# INLINE basicUnsafeGrow #-}
--- 
+--
 #if MIN_VERSION_vector(0,11,0)
   basicInitialize (MV (TaggedFunctor (MVectorVal v) :& rs)) = do
     GM.basicInitialize v
@@ -238,32 +242,32 @@ instance ( G.Vector (Vector k) (Rec (TaggedFunctor Identity) (s ': rs))
     G.basicUnsafeCopy (kMV (Proxy :: Proxy k) mrs) (kV (Proxy :: Proxy k) vrs)
   {-# INLINE basicUnsafeCopy #-}
 
-  elemseq (V (TaggedFunctor (VectorVal v) :& vrs)) (TaggedFunctor (Identity a) :& rs) b = 
+  elemseq (V (TaggedFunctor (VectorVal v) :& vrs)) (TaggedFunctor (Identity a) :& rs) b =
     G.elemseq v a (G.elemseq (kV (Proxy :: Proxy k) vrs) rs b)
   {-# INLINE elemseq #-}
- 
+
 
 -- instance (x ~ Rec Identity rs, Eq x, G.Vector Vector x) => Eq (Vector x) where
 --   xs == ys = Stream.eq (G.stream xs) (G.stream ys)
 --   {-# INLINE (==) #-}
--- 
+--
 --   xs /= ys = not (Stream.eq (G.stream xs) (G.stream ys))
 --   {-# INLINE (/=) #-}
--- 
--- 
+--
+--
 -- instance (x ~ Rec Identity rs, Ord x, G.Vector Vector x) => Ord (Vector x) where
 --   {-# INLINE compare #-}
 --   compare xs ys = Stream.cmp (G.stream xs) (G.stream ys)
--- 
+--
 --   {-# INLINE (<) #-}
 --   xs < ys = Stream.cmp (G.stream xs) (G.stream ys) == LT
--- 
+--
 --   {-# INLINE (<=) #-}
 --   xs <= ys = Stream.cmp (G.stream xs) (G.stream ys) /= GT
--- 
+--
 --   {-# INLINE (>) #-}
 --   xs > ys = Stream.cmp (G.stream xs) (G.stream ys) == GT
--- 
+--
 --   {-# INLINE (>=) #-}
 --   xs >= ys = Stream.cmp (G.stream xs) (G.stream ys) /= LT
 
@@ -283,28 +287,28 @@ consVec _ _ v (MV rs) = MV (TaggedFunctor (MVectorVal v) :& rs)
 
 
 stripMV :: forall (rs :: [(a,*)]) (k :: KProxy a) m.
-  Proxy m 
-  -> MVector k (PrimState m) (Rec (TaggedFunctor Identity) rs) 
+  Proxy m
+  -> MVector k (PrimState m) (Rec (TaggedFunctor Identity) rs)
   -> Rec (TaggedFunctor (MVectorVal (PrimState m))) rs
 stripMV _ (MV rs) = rs
 {-# INLINE stripMV #-}
 
 stripV :: forall (rs :: [(a,*)]) (k :: KProxy a).
-  Vector k (Rec (TaggedFunctor Identity) rs) 
+  Vector k (Rec (TaggedFunctor Identity) rs)
   -> Rec (TaggedFunctor VectorVal) rs
 stripV (V rs) = rs
 {-# INLINE stripV #-}
 
-kMV :: forall (k :: KProxy a) (rs :: [(a,*)]) s. 
+kMV :: forall (k :: KProxy a) (rs :: [(a,*)]) s.
      Proxy k
-  -> (Rec (TaggedFunctor (MVectorVal s)) rs) 
+  -> (Rec (TaggedFunctor (MVectorVal s)) rs)
   -> MVector k s (Rec (TaggedFunctor Identity) rs)
 kMV _ r = MV r
 {-# INLINE kMV #-}
 
-kV :: forall (k :: KProxy a) (rs :: [(a,*)]). 
+kV :: forall (k :: KProxy a) (rs :: [(a,*)]).
      Proxy k
-  -> (Rec (TaggedFunctor VectorVal) rs) 
+  -> (Rec (TaggedFunctor VectorVal) rs)
   -> Vector k (Rec (TaggedFunctor Identity) rs)
 kV _ r = V r
 {-# INLINE kV #-}

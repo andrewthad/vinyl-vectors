@@ -37,8 +37,8 @@ library
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication
     , Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join
 
-    , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Internal
-    , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Implication
+    -- , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Internal
+    -- , Data.Vector.Vinyl.Default.NonEmpty.Polymorphic.Implication
 
     , Data.Vector.Vinyl.Default.Types
     , Data.Vector.Vinyl.Default.Types.Deriving
@@ -46,17 +46,24 @@ library
     , Data.Vector.Vec
     , Data.Vector.Vec.Internal
 
-    , Data.Vinyl.List
+    , Data.Vinyl.DictFun
     , Data.Vinyl.Named
     , Data.Vinyl.Arbitrary
     , Data.Vinyl.Class.Implication
 
     , Data.Vec
+    , Data.TypeString
     , Data.Relation
     , Data.Relation.Run.Naive
     , Data.Relation.Run.Basic
+    , Data.Relation.Backend
     , Data.Dynamic.Constraint
+    , Data.Tuple.TypeLevel
     , Data.List.TypeLevel
+    , Data.List.TypeLevel.Cmp
+    , Data.List.TypeLevel.Union
+    , Data.List.TypeLevel.Subtraction
+    , Data.List.TypeLevel.Constraint
     , Data.List.Symbol
     , Data.Proxy.TH
     , Data.Tagged.Functor
@@ -96,6 +103,7 @@ library
     FlexibleContexts
     ConstraintKinds
     UndecidableInstances
+    PolyKinds
     -- Don't enable PolyKinds. It makes the vector
     -- stuff freak out.
   default-language:    Haskell2010
@@ -187,11 +195,13 @@ test-suite             vinyl-vectors-test
     QuasiQuotes
     OverloadedStrings
     PolyKinds
+    RankNTypes
   build-depends:       
       vinyl-vectors
     , HUnit             >= 1.2
     , QuickCheck        >= 2.8.0
     , base              >= 4.7 && < 5.0
+    , containers
     , hybrid-vectors >= 0.2.1
     , test-framework    >= 0.8
     , test-framework-hunit    

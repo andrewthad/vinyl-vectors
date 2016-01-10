@@ -1,63 +1,68 @@
 {-# LANGUAGE PolyKinds #-}
-module Data.Relation.Run.Basic 
+module Data.Relation.Run.Basic
   (
   ) where
 
-import Data.Relation
-import Control.Monad
-import Data.Set (Set)
-import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Foldable 
-import qualified Data.Set as Set
-import qualified Data.List as List
-import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Vector.Vec.Internal as VV
-import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic as R
-import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal as R
-import qualified Data.Vector.Hybrid.Internal as Hybrid
-import qualified Data.Vector.Hybrid as Hybrid
-import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
-import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (
-  sortWithIndices, indexManyPredicate, matchingIndicesExtraImmutable, indexMany)
-import Data.Typeable (Typeable,TypeRep,typeRep)
-import Control.Monad.Trans.Writer.Strict (Writer,tell,runWriter)
-import Data.Monoid (Any(..))
-import qualified GHC.Prim as Prim
-import Data.Vinyl.Named
-import GHC.TypeLits (CmpSymbol)
-import Data.List.TypeLevel 
-import Data.Vector.Vinyl.Default.Types (VectorVal(..))
-import Data.Proxy (Proxy(..),KProxy)
-import Data.Vinyl.Core (Rec(..))
-import Data.Constraint
-import qualified Data.Graph.Inductive.Tree as Patricia
+import           Control.Arrow                                              (first, second)
+import           Control.Monad
+import           Control.Monad.Trans.State
+import           Control.Monad.Trans.Writer.Strict                          (Writer, runWriter, tell)
+import           Data.Constraint
+import           Data.Foldable
+import qualified Data.Graph.Inductive.Graph                                 as Graph
+import qualified Data.Graph.Inductive.Tree                                  as Patricia
+import qualified Data.List                                                  as List
+import           Data.List.NonEmpty                                         (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty                                         as NonEmpty
+import           Data.List.TypeLevel
+import           Data.List.TypeLevel.Constraint
+import           Data.Map                                                   (Map)
+import qualified Data.Map.Strict                                            as Map
+import           Data.Monoid                                                (Any (..))
+import           Data.Monoid
+import           Data.Proxy                                                 (KProxy, Proxy (..))
+import           Data.Relation
+import           Data.Relation.Backend                                      (Basic (..), BasicInner (..), Common (..), NullRelArity (..), Test (..), nullRelArityToInt)
+import           Data.Set                                                   (Set)
+import qualified Data.Set                                                   as Set
+import           Data.Tagged.Functor                                        (TaggedFunctor (..))
+import           Data.Tuple.TypeLevel
+import           Data.Type.Equality
+import           Data.Typeable                                              (TypeRep, Typeable, typeRep)
+import           Data.TypeString
+import           Data.Vec
+import qualified Data.Vector.Generic                                        as G
+import qualified Data.Vector.Hybrid                                         as Hybrid
+import qualified Data.Vector.Hybrid.Internal                                as Hybrid
+import qualified Data.Vector.Unboxed                                        as U
+import qualified Data.Vector.Vec.Internal                                   as VV
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic             as R
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal    as R
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join        (indexMany, indexManyPredicate, matchingIndicesExtraImmutable, sortWithIndices)
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Tagged                  as VT
+import           Data.Vector.Vinyl.Default.Types                            (VectorVal (..))
+import           Data.Vector.Vinyl.Default.Types                            (HasDefaultVector)
+import           Data.Vinyl.Class.Implication                               (eqTRec, listAllOrd, listAllToRecAll)
+import           Data.Vinyl.Core                                            (Rec (..))
+import           Data.Vinyl.DictFun
+import           Data.Vinyl.Functor                                         (Compose (..), Identity)
+import           Data.Vinyl.Named
+import           Debug.Trace                                                (traceShowId)
+import qualified GHC.Prim                                                   as Prim
+import           GHC.TypeLits                                               (CmpSymbol)
+import           Unsafe.Coerce                                              (unsafeCoerce)
 -- import qualified Data.Graph.Inductive.PatriciaTree as Patricia
-import qualified Data.Graph.Inductive.Graph as Graph
-import Control.Monad.Trans.State
-import Control.Arrow (first, second)
-import Data.Map (Map)
-import Data.Vector.Vinyl.Default.Types (HasDefaultVector)
-import qualified Data.Vector.Unboxed as U
-import qualified Data.Vector.Generic as G
-import qualified Data.Map.Strict as Map
-import Unsafe.Coerce (unsafeCoerce)
-import Data.Vinyl.Functor (Identity,Compose(..))
-import Data.Tagged.Functor (TaggedFunctor(..))
-import qualified Data.Vector.Vinyl.Default.NonEmpty.Tagged as VT
-import Data.Monoid
-import Data.Vec
-import Data.Vinyl.Class.Implication (listAllToRecAll,listAllOrd,eqTRec)
-import Data.Type.Equality
-import Debug.Trace (traceShowId)
+
 
 type ExtraConstraints =
       ConstrainSnd HasDefaultVector
   :&: ConstrainSnd Show
 
-data R (rs :: [(k,*)]) = R 
-  String -- name of table
-  (Rec (DictFun (ConstrainSnd HasDefaultVector :&: ConstrainSnd Show)) rs) -- extra constraints
-  (Rec (TaggedFunctor VectorVal) rs) -- value
+-- data R (rs :: [(k,*)]) = R
+--   String -- name of table
+--   (Rec (DictFun (ConstrainSnd HasDefaultVector :&: ConstrainSnd Show)) rs) -- extra constraints
+--   (Rec (TaggedFunctor VectorVal) rs) -- value
 
 newtype UResult = UResult
   { getUResult :: Either NullRelArity (NonEmpty (U.Vector Int, Map Col HiddenVector)) }
@@ -68,32 +73,30 @@ instance Show UResult where
       [ NonEmpty.toList $ fmap (("  " ++) . show . fst) xs
       , NonEmpty.toList $ fmap (showMap . snd) xs
       ]
-    where showMap m = join $ flip map (Map.toList m) $ \(Col name, hv) -> 
+    where showMap m = join $ flip map (Map.toList m) $ \(Col name, hv) ->
             "  " ++ name ++ ":\n" ++
             "    " ++ show hv ++ "\n"
 newtype Col = Col { getCol :: String }
   deriving (Eq,Ord,Show)
 
-relationName :: Relation R rs -> String
-relationName r = case r of
-  RelationNull (R name _ _) _ -> name
-  RelationPresent (R name _ _) -> name
+relationName :: Basic rs -> String
+relationName (Basic name _) = name
 
 combineConstraints :: Rec (DictFun MinimalConstraints) rs
   -> Rec (DictFun ExtraConstraints) rs -> Rec (DictFun RelOpConstraints) rs
 combineConstraints RNil RNil = RNil
 combineConstraints (DictFun :& as) (DictFun :& bs) = DictFun :& combineConstraints as bs
 
-relationToUnsafeRelation :: Rec (DictFun MinimalConstraints) rs 
-  -> Relation R rs -> Either NullRelArity (Map Col HiddenVector)
-relationToUnsafeRelation minimal r = case r of
-  RelationNull _ a -> Left a
-  RelationPresent (R _ extra vrec) -> case recDictFunToDict (combineConstraints minimal extra) of
+relationToUnsafeRelation :: Rec (DictFun MinimalConstraints) rs
+  -> Basic rs -> Either NullRelArity (Map Col HiddenVector)
+relationToUnsafeRelation minimal (Basic _ r) = case r of
+  CommonNull a -> Left a
+  CommonPresent (BasicInner extra vrec) -> case recDictFunToDict (combineConstraints minimal extra) of
     Dict -> fmap (Map.mapKeys Col) (Right (recToHiddenVectorMap vrec))
 
 uResultColumns :: UResult -> NonEmpty (U.Vector Int, Map Col HiddenVector)
 uResultColumns (UResult (Right x)) = x
-uResultColumns (UResult (Left _)) = 
+uResultColumns (UResult (Left _)) =
   error "uResultColumns: called on UResult with no columns"
 
 data UTable = UTable
@@ -109,16 +112,16 @@ requireEqCol (UPredEqCols a b) = (a,b)
 requireEqCol _ = error "requireEqCol failed"
 
 -- The predicates passed to this function should be list
--- of predication that should be ANDed together. None of 
+-- of predication that should be ANDed together. None of
 -- them should be UPredAnd or UPredEqValue.
 makeGraph :: ([(Col,Col)],[URelOp]) -> Patricia.Gr URelOp (Col,Col)
 makeGraph (preds,ops) = List.foldl' goEdge initGraph preds
-  where 
-  goEdge graph (c1,c2) = 
-    List.foldl' 
-      (\g (n1,n2) -> Graph.insEdge (n1,n2,(c1,c2)) 
+  where
+  goEdge graph (c1,c2) =
+    List.foldl'
+      (\g (n1,n2) -> Graph.insEdge (n1,n2,(c1,c2))
                    . Graph.delLEdge (n1,n2,(c1,c2))
-                   $ g) 
+                   $ g)
       graph $ do
         ix1 <- colBaseTableIxs c1
         ix2 <- colBaseTableIxs c2
@@ -130,7 +133,7 @@ makeGraph (preds,ops) = List.foldl' goEdge initGraph preds
   ixedCols = map (second uRelOpCols) ixedOps
   colBaseTableIxs col = id
     $ map fst
-    $ flip List.filter ixedCols $ \(ix,cols) -> 
+    $ flip List.filter ixedCols $ \(ix,cols) ->
         Set.member col cols
 
 -- The resulting UPreds cannot be UPredAnd. Also, I should
@@ -148,7 +151,7 @@ uPredSplitAnd = go
   go p = p :| []
 
 uPredMergeAnd :: NonEmpty UPred -> UPred
-uPredMergeAnd = nonEmptyFoldl1 UPredAnd 
+uPredMergeAnd = nonEmptyFoldl1 UPredAnd
 
 nonEmptyAppend :: NonEmpty a -> NonEmpty a -> NonEmpty a
 nonEmptyAppend (a :| as) (b :| bs) = a :| (as ++ [b] ++ bs)
@@ -160,8 +163,8 @@ nonEmptyFoldl1 g (a :| as) = List.foldl g a as
 -- subpredicates that contain the columns passed in. The
 -- second is the subpredicates that don't.
 uPredSplitForJoin :: UPred -> Set Col -> Set Col -> ([UPred],[UPred],[UPred])
-uPredSplitForJoin masterPred cols1 cols2 = 
-  flip foldMap (NonEmpty.toList (uPredSplitAnd masterPred)) $ \pred -> 
+uPredSplitForJoin masterPred cols1 cols2 =
+  flip foldMap (NonEmpty.toList (uPredSplitAnd masterPred)) $ \pred ->
     let predCols = uPredCols pred
         isSub1 = predCols `Set.isSubsetOf` cols1
         isSub2 = predCols `Set.isSubsetOf` cols2
@@ -171,7 +174,7 @@ uPredSplitForJoin masterPred cols1 cols2 =
       (False, True ) -> ([],[pred],[])
       (False, False) -> ([],[],[pred])
 
--- This should bring a URelOp to a canonical form. This 
+-- This should bring a URelOp to a canonical form. This
 -- involves pushing any restrictions as far down as
 -- they can go and collapsing them when possible. This
 -- function should be idempotent.
@@ -184,14 +187,14 @@ canonizeURelOpStep :: URelOp -> Writer Any URelOp
 canonizeURelOpStep = go
   where
   go u@(URelTable a) = return u
-  -- Don't push natural join into anything 
+  -- Don't push natural join into anything
   go (URelJoin op1 op2) = URelJoin <$> go op1 <*> go op2
   go (URelProject cols opNext) = case opNext of
     URelTable a -> return (URelProject cols opNext)
     URelProject colsSuper op -> do
       when (not (cols `Set.isSubsetOf` colsSuper))
         $ error "canonizeURelOp: URelProject incorrect scenario"
-      tell (Any True) 
+      tell (Any True)
       return (URelProject cols op)
     -- To ensure termination, we do not allow projection
     -- to be pushed inside of restriction.
@@ -199,11 +202,11 @@ canonizeURelOpStep = go
       canonizedRel <- go (URelRestrict pred op)
       return (URelProject cols canonizedRel)
     URelJoin op1 op2 -> do
-      let op1Cols = uRelOpCols op1
-          op2Cols = uRelOpCols op2
+      let op1Cols  = uRelOpCols op1
+          op2Cols  = uRelOpCols op2
           joinCols = Set.intersection op1Cols op2Cols
-          op1' = URelProject (Set.intersection (uRelOpCols op1) cols) op1
-          op2' = URelProject (Set.intersection (uRelOpCols op2) cols) op2
+          op1'     = URelProject (Set.intersection (uRelOpCols op1) cols) op1
+          op2'     = URelProject (Set.intersection (uRelOpCols op2) cols) op2
       if joinCols `Set.isSubsetOf` cols
         then do
           tell (Any True)
@@ -215,7 +218,7 @@ canonizeURelOpStep = go
       let predCols = uPredCols pred
       when (not (predCols `Set.isSubsetOf` projCols))
         $ error "canonizeURelOp: URelRestrict incorrect scenario"
-      tell (Any True) 
+      tell (Any True)
       return (URelProject projCols (URelRestrict pred op))
     URelRestrict predNext op -> do
       tell (Any True)
@@ -263,25 +266,25 @@ uPredGraphJoins = go
     build (URelJoin a b)
   build (URelRestrict pred a) = modify (second (URelRestrict pred (go a) :))
 
-toUnchecked :: forall rs. RelOp R rs -> URelOp
+toUnchecked :: forall rs. RelOp Basic rs -> URelOp
 toUnchecked = go
   where
-  go :: forall as. RelOp R as -> URelOp
-  go (RelTable dicts asOrd relation) = URelTable 
-    (UTable 
+  go :: forall as. RelOp Basic as -> URelOp
+  go (RelTable dicts asOrd relation) = URelTable
+    (UTable
       (relationName relation)
-      (colsFromRec $ weakenRecDictFun 
-        (Proxy :: Proxy (ConstrainFst TypeString)) 
+      (colsFromRec $ weakenRecDictFun
+        (Proxy :: Proxy (ConstrainFst TypeString))
         (Sub Dict)
         dicts
       )
       (relationToUnsafeRelation dicts relation)
     )
   go (RelJoin a b) = URelJoin (go a) (go b)
-  go (RelProject sub relNext) = URelProject 
+  go (RelProject sub relNext) = URelProject
     (colsFromRec (projectRec sub (relOpTypes relNext))) (go relNext)
-  go (RelRestrict sub pred relNext) = URelRestrict 
-    (predToUnchecked (projectRec sub (relOpNamesTypes relNext)) pred) 
+  go (RelRestrict sub pred relNext) = URelRestrict
+    (predToUnchecked (projectRec sub (relOpNamesTypes relNext)) pred)
     (go relNext)
 
 colsFromRec :: Rec (DictFun (ConstrainFst TypeString)) rs -> Set Col
@@ -297,8 +300,8 @@ data UPred
 
 data URelOp
   = URelProject (Set Col) URelOp
-  | URelJoin URelOp URelOp 
-  | URelRestrict UPred URelOp 
+  | URelJoin URelOp URelOp
+  | URelRestrict UPred URelOp
   | URelTable UTable
   | URelJoinMany (Patricia.Gr URelOp (Col,Col))
 
@@ -311,7 +314,7 @@ instance Show URelOp where
 --   go :: forall f rs. Pred f rs -> OrdList f rs
 --   go (PredEqCols o) = o
 --   go (PredEqValue _) = OrdListSingle
-  
+
 predToUnchecked :: Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) rs -> Pred rs -> UPred
 predToUnchecked = go
   where
@@ -323,46 +326,46 @@ predToUnchecked = go
   go d pred@(PredOr subA subB a b) = UPredOr
     (go (projectRec subA d) a)
     (go (projectRec subB d) b)
-  go (d@DictFun :& e@DictFun :& RNil) (PredEqCols (OrdListCons OrdListSingle)) = 
+  go (d@DictFun :& e@DictFun :& RNil) (PredEqCols (OrdListCons OrdListSingle)) =
     UPredEqCols (Col (typeString $ proxyFst d)) (Col (typeString $ proxyFst e))
-  go (d@DictFun :& RNil) (PredEqValue v) = 
+  go (d@DictFun :& RNil) (PredEqValue v) =
     UPredEqValue (Col (typeString $ proxyFst d)) (typeRep $ proxySnd d) (toAny v)
 
 toAny :: a -> Prim.Any
 toAny = unsafeCoerce
 
--- Improve this at some point to tab things over correctly on a 
+-- Improve this at some point to tab things over correctly on a
 -- multi join.
 showURelOp :: URelOp -> String
 showURelOp = go 0
-  where 
+  where
   go :: Int -> URelOp -> String
-  go i (URelTable ut) = List.replicate i ' ' 
+  go i (URelTable ut) = List.replicate i ' '
     ++ "Table: " ++ utName ut
     ++ " (" ++ join (List.intersperse ", " (map getCol $ Set.toList (utColumns ut))) ++ ")" ++ "\n"
   go i (URelJoin a b) = List.replicate i ' ' ++ "Natural Join" ++ "\n" ++ go (i + 2) a ++ go (i + 2) b
-  go i (URelProject cols r) = List.replicate i ' ' 
-    ++ "Project (" ++ join (List.intersperse "," (map getCol $ Set.toList cols)) ++ ")" ++ "\n" ++ go (i + 2) r 
-  go i (URelRestrict pred r) = List.replicate i ' ' 
-    ++ "Restrict (" ++ showUPred pred ++ ")" ++ "\n" ++ go (i + 2) r 
+  go i (URelProject cols r) = List.replicate i ' '
+    ++ "Project (" ++ join (List.intersperse "," (map getCol $ Set.toList cols)) ++ ")" ++ "\n" ++ go (i + 2) r
+  go i (URelRestrict pred r) = List.replicate i ' '
+    ++ "Restrict (" ++ showUPred pred ++ ")" ++ "\n" ++ go (i + 2) r
   go i (URelJoinMany gr) = List.replicate i ' '
-    ++ "Join Many\n" ++ List.replicate (i + 2) ' ' ++ "( " ++ join 
+    ++ "Join Many\n" ++ List.replicate (i + 2) ' ' ++ "( " ++ join
        ( List.intersperse ("\n" ++ List.replicate (i + 2) ' ' ++ ", ")
-         ( map (\(n1,n2,(c1,c2)) -> "[" ++ show n1 ++ "," ++ show n2 ++ "] " ++ getCol c1 ++ " = " ++ getCol c2) 
-               (Graph.labEdges gr) 
+         ( map (\(n1,n2,(c1,c2)) -> "[" ++ show n1 ++ "," ++ show n2 ++ "] " ++ getCol c1 ++ " = " ++ getCol c2)
+               (Graph.labEdges gr)
          )
        )
-    ++ "\n" ++ List.replicate (i + 2) ' ' ++ ")\n" 
+    ++ "\n" ++ List.replicate (i + 2) ' ' ++ ")\n"
     ++ join (map (\(n,u) -> replicate (i + 2) ' ' ++ show n ++ ". " ++ drop (i + 5) (go (i + 5) u)) (Graph.labNodes gr))
 
 showUPred :: UPred -> String
 showUPred = go
   where
-  go (UPredNot pred) = "¬ ( " ++ go pred ++ ")"
-  go (UPredAnd a b) = "( " ++ go a ++ " ) ∧ ( " ++ go b ++ ")"
-  go (UPredOr a b) = "( " ++ go a ++ " ) ∨ ( " ++ go b ++ ")"
-  go (UPredEqCols a b) = getCol a ++ " = " ++ getCol b
-  go (UPredEqValue col _ v) = getCol col ++ " = ?"
+  go (UPredNot pred)        = "¬ ( " ++ go pred ++ ")"
+  go (UPredAnd a b)         = "( " ++ go a ++ " ) ∧ ( " ++ go b ++ ")"
+  go (UPredOr a b)          = "( " ++ go a ++ " ) ∨ ( " ++ go b ++ ")"
+  go (UPredEqCols a b)      = getCol a ++ "                            = " ++ getCol b
+  go (UPredEqValue col _ v) = getCol col ++ "                          = ?"
 
 uPredCols :: UPred -> Set Col
 uPredCols = go
@@ -371,7 +374,7 @@ uPredCols = go
   go (UPredEqCols a b)    = Set.fromList [a,b]
   go (UPredAnd x y)       = Set.union (uPredCols x) (uPredCols y)
   go (UPredOr x y)        = Set.union (uPredCols x) (uPredCols y)
-  go (UPredNot x)         = uPredCols x 
+  go (UPredNot x)         = uPredCols x
 
 uRelOpCols :: URelOp -> Set Col
 uRelOpCols = go
@@ -381,12 +384,12 @@ uRelOpCols = go
   go (URelRestrict _ op)  = go op
   go (URelJoin op1 op2)   = Set.union (go op1) (go op2)
 
-relOpRun :: forall (rs :: [(a,*)]) (k :: KProxy a). 
+relOpRun :: forall (rs :: [(a,*)]) (k :: KProxy a).
   ( ListAll rs (ConstrainFst TypeString)
   , ListAll rs (ConstrainSnd Typeable)
   , ListAll rs (ConstrainSnd HasDefaultVector)
   )
-  => RelOp R rs 
+  => RelOp Basic rs
   -> VT.Vector k (Rec (TaggedFunctor Identity) rs)
 relOpRun r = id
   . VT.fromRec
@@ -403,17 +406,17 @@ relOpRun r = id
   . toUnchecked
   $ r
 
--- Runs the URelOp without first optimizing the AST. You should 
+-- Runs the URelOp without first optimizing the AST. You should
 -- make sure that uPredGraphJoins has already been called on the
 -- URelOp before running this.
-uRelOpRun :: URelOp -> UResult 
+uRelOpRun :: URelOp -> UResult
 uRelOpRun = go
   where
-  go :: URelOp -> UResult 
+  go :: URelOp -> UResult
   go (URelTable t) = case utData t of
     Left a -> UResult $ Left a
     Right m -> case Map.elems m of
-      HiddenVector (VectorVal v) : _ -> UResult 
+      HiddenVector (VectorVal v) : _ -> UResult
         $ Right $ (U.fromList (enumFromTo 0 (G.length v - 1)),m) :| []
       [] -> error "uRelOpRun: URelTable with incorrect empty map"
   go (URelRestrict pred op) = case go op of
@@ -422,19 +425,19 @@ uRelOpRun = go
     UResult (Left a) -> case a of
       NullRelZero -> UResult (Left NullRelZero)
       NullRelOne -> error "uRelOpRun: fix me after lambdas are allowed"
-    UResult (Right xs) -> 
+    UResult (Right xs) ->
       let mask = applyUPred pred (listMapHelper (NonEmpty.toList xs))
       in UResult (Right (fmap (first (U.ifilter (\i _ -> mask U.! i))) xs))
-  go (URelJoin _ _) = 
+  go (URelJoin _ _) =
     error "uRelOpRun: URelJoin should already have been replaced"
-  go (URelJoinMany graph) = let 
+  go (URelJoinMany graph) = let
     nodes = Graph.labNodes graph
     graphResults = Graph.nmap go graph
     in performJoins graphResults
 
 performJoins :: Patricia.Gr UResult (Col,Col) -> UResult
 performJoins = go
-  where 
+  where
   go graphResults = let
     results = Graph.labNodes graphResults
     graphArities = Graph.nmap uRelArity graphResults
@@ -453,7 +456,7 @@ performJoins = go
         [(_,r)]   -> r
         a : b : _ -> error "still need to support cross join"
       (_ : _) -> let
-        ((n1,n2),colPairs) = List.minimumBy (\((a1,b1),_) ((a2,b2),_) -> 
+        ((n1,n2),colPairs) = List.minimumBy (\((a1,b1),_) ((a2,b2),_) ->
           compare (getArity a1 * getArity b1) (getArity a2 * getArity b2))
           edgeLists
         r1 = getResult n1
@@ -512,17 +515,17 @@ joinUResultsOn (UResult e1) (UResult e2) pairs = case (e1,e2) of
                           natJoinCols = map fst $ filter (\(a,b) -> a == b) $ NonEmpty.toList pairs
                           rmNatJoinExtraCols m = foldl' (\a b -> removeFirstHelper b a) m natJoinCols
                           in case matchingIndicesExtraImmutable s1 s2 of
-                              (Hybrid.V (VV.V newIxs1) (VV.V newIxs2)) -> 
+                              (Hybrid.V (VV.V newIxs1) (VV.V newIxs2)) ->
                                 UResult $ Right $ rmNatJoinExtraCols $ uncheckedZipNonEmpty
-                                  (nonEmptyAppend 
+                                  (nonEmptyAppend
                                     (vecToNonEmpty newIxs1)
                                     (vecToNonEmpty newIxs2)
                                   )
-                                  ( nonEmptyAppend 
+                                  ( nonEmptyAppend
                                     (fmap snd v1)
                                     (fmap snd v2)
                                   )
-    
+
     in res
   where
   unJust Nothing  = error "joinUResultsOn: key lookup failure"

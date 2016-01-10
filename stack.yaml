@@ -9,6 +9,7 @@ packages:
 - location:
     git: 'https://github.com/andrewthad/Vinyl'
     commit: 'f16494e4ccc28378c239b2b12e83cd4b5c76af9a'
+  extra-dep: true
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:

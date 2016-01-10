@@ -1,33 +1,33 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs            #-}
+{-# LANGUAGE TypeOperators    #-}
 module Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join where
 
-import Control.Monad.Primitive (PrimMonad,PrimState)
-import qualified Data.Vector.Algorithms.Merge as Merge
-import qualified Data.Vector.Unboxed as U
-import qualified Data.Vector.Unboxed.Mutable as UM
-import qualified Data.Vector.Generic as G
-import qualified Data.Vector.Generic.Mutable as GM
-import qualified Data.Vector.Hybrid          as Hybrid
-import qualified Data.Vector.Hybrid.Internal as Hybrid
-import qualified Data.Vector.Hybrid.Mutable  as MHybrid
-import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal as Vinyl
-import qualified Data.List as List
-import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
-import Data.Vector.Vinyl.Default.Types (HasDefaultVector,VectorVal)
-import Data.List.TypeLevel (ListAll)
-import Data.Vinyl.Core       (Rec(..))
-import Data.Vinyl.Functor    (Identity)
-import Data.Vinyl.TypeLevel  (RecAll)
-import Data.Vinyl.Class.Implication (listAllOrd)
-import Control.Monad.ST      (ST,runST)
-import Data.Primitive.MutVar (newMutVar, readMutVar, writeMutVar)
-import Control.Monad         (guard)
-import Data.Function         (on)
-import Data.Constraint
-import Data.Proxy            (Proxy(Proxy))
+import           Control.Monad                                              (guard)
+import           Control.Monad.Primitive                                    (PrimMonad, PrimState)
+import           Control.Monad.ST                                           (ST, runST)
+import           Data.Constraint
+import           Data.Function                                              (on)
+import qualified Data.List                                                  as List
+import           Data.List.TypeLevel.Constraint                             (ListAll)
+import           Data.Primitive.MutVar                                      (newMutVar, readMutVar, writeMutVar)
+import           Data.Proxy                                                 (Proxy (Proxy))
+import qualified Data.Vector.Algorithms.Merge                               as Merge
+import qualified Data.Vector.Generic                                        as G
+import qualified Data.Vector.Generic.Mutable                                as GM
+import qualified Data.Vector.Hybrid                                         as Hybrid
+import qualified Data.Vector.Hybrid.Internal                                as Hybrid
+import qualified Data.Vector.Hybrid.Mutable                                 as MHybrid
+import qualified Data.Vector.Unboxed                                        as U
+import qualified Data.Vector.Unboxed.Mutable                                as UM
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (listAllVector)
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal    as Vinyl
+import           Data.Vector.Vinyl.Default.Types                            (HasDefaultVector, VectorVal)
+import           Data.Vinyl.Class.Implication                               (listAllOrd)
+import           Data.Vinyl.Core                                            (Rec (..))
+import           Data.Vinyl.Functor                                         (Identity)
+import           Data.Vinyl.TypeLevel                                       (RecAll)
 
 defSort :: (PrimMonad m, GM.MVector v e, Ord e) => v (PrimState m) e -> m ()
 defSort = Merge.sort
@@ -47,14 +47,14 @@ fullJoinIndicesNaive as bs = do
 
 -- Demands that records are identical. This step must be performed
 -- after a projection step. This destroys the input vectors.
-fullJoinIndices :: 
+fullJoinIndices ::
   ( PrimMonad m
   , s ~ PrimState m
   , GM.MVector v a
   , Ord a
   )
-  => v s a 
-  -> v s a 
+  => v s a
+  -> v s a
   -> m (Hybrid.MVector U.MVector U.MVector s (Int,Int))
 fullJoinIndices as bs = do
   ias <- pairWithIndices as
@@ -70,7 +70,7 @@ indexMany ixs xs = runST $ do
     GM.write res i (xs G.! ix)
   G.freeze res
 
-indexManyPredicate :: ( G.Vector v a ) 
+indexManyPredicate :: ( G.Vector v a )
   => (a -> Bool) -> U.Vector Int -> v a -> U.Vector Bool
 indexManyPredicate pred ixs xs = runST $ do
   res <- UM.new (U.length ixs)
@@ -78,12 +78,12 @@ indexManyPredicate pred ixs xs = runST $ do
     UM.write res i (pred (xs G.! ix))
   U.freeze res
 
-fullJoinIndicesImmutable :: 
+fullJoinIndicesImmutable ::
   ( G.Vector v a
   , Ord a
   )
-  => v a 
-  -> v a 
+  => v a
+  -> v a
   -> Hybrid.Vector U.Vector U.Vector (Int,Int)
 fullJoinIndicesImmutable as bs = runST $ do
   mas <- G.thaw as
@@ -94,13 +94,13 @@ fullJoinIndicesImmutable as bs = runST $ do
 recFullJoinIndicesImmutable :: forall rs z zs.
   ( ListAll rs Ord
   , ListAll rs HasDefaultVector
-  -- , ListAll rs 
+  -- , ListAll rs
   , rs ~ (z ': zs)
   )
   => Rec VectorVal rs
   -> Rec VectorVal rs
   -> Hybrid.Vector U.Vector U.Vector (Int,Int)
-recFullJoinIndicesImmutable as bs = 
+recFullJoinIndicesImmutable as bs =
   case listAllOrd (Proxy :: Proxy Identity) as (Sub Dict) of
     Sub Dict -> case listAllVector as of
       Sub Dict -> fullJoinIndicesImmutable (Vinyl.V as) (Vinyl.V bs)
@@ -138,7 +138,7 @@ matchingIndices as bs = do
           GT -> error "matchingIndices: invariant violated"
         writeMutVar irRef (ir + 1)
         MHybrid.write r ir v -- (traceShowId v)
-  whileM_ 
+  whileM_
     ( do ia <- readMutVar iaRef
          ib <- readMutVar ibRef
          return (ia < alen && ib < blen)
@@ -160,7 +160,7 @@ matchingIndices as bs = do
                       LT -> do
                         (_,brecNext) <- MHybrid.read bs ibWalk
                         return (brecNext == arec)
-                      EQ -> return False 
+                      EQ -> return False
                       GT -> error "ib walk: invariant violated"
                )
                ( do ibWalk <- readMutVar ibWalkRef
@@ -176,7 +176,7 @@ matchingIndices as bs = do
                       LT -> do
                         (_,arecNext) <- MHybrid.read as iaWalk
                         return (arecNext == brec)
-                      EQ -> return False 
+                      EQ -> return False
                       GT -> error "ia walk: invariant violated"
                )
                ( do iaWalk <- readMutVar iaWalkRef
@@ -190,14 +190,14 @@ matchingIndices as bs = do
   r <- readMutVar rref
   ir <- readMutVar irRef
   return (MHybrid.slice 0 ir r)
-  where 
+  where
   initialSize = 4 -- change to 64
   alen = MHybrid.length as
   blen = MHybrid.length bs
 
 whileM_ :: (Monad m) => m Bool -> m a -> m ()
 whileM_ p f = go
-  where 
+  where
   go = do
     x <- p
     if x
@@ -207,7 +207,7 @@ whileM_ p f = go
 
 -- gives us the freedom to use anything as indices
 -- instead of just Ints
-matchingIndicesExtraImmutable :: 
+matchingIndicesExtraImmutable ::
   ( G.Vector v a
   , G.Vector u b
   , G.Vector w c
@@ -222,21 +222,21 @@ matchingIndicesExtraImmutable a b = runST $ do
   mr <- matchingIndices ma mb
   Hybrid.freeze mr
 
-pairWithIndices :: 
+pairWithIndices ::
   ( PrimMonad m
   , s ~ PrimState m
-  , GM.MVector v a 
-  ) 
-  => v s a 
+  , GM.MVector v a
+  )
+  => v s a
   -> m (Hybrid.MVector U.MVector v s (Int, a))
 pairWithIndices v = do
   let total = GM.length v
   mv <- U.thaw (U.fromList (enumFromTo 0 (total - 1)))
   return (Hybrid.MV mv v)
 
-sortWithIndices :: 
+sortWithIndices ::
   ( Ord a
-  , GM.MVector v a 
+  , GM.MVector v a
   , GM.MVector u i
   , PrimMonad m
   , s ~ PrimState m
@@ -244,4 +244,4 @@ sortWithIndices ::
   => Hybrid.MVector u v s (i,a)
   -> m ()
 sortWithIndices v = defSortBy (\(_,a) (_,b) -> compare a b) v
- 
+

@@ -1,14 +1,14 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 module Data.Vector.Vinyl.Default.Types
   ( MVectorVal(..)
   , VectorVal(..)
@@ -16,20 +16,22 @@ module Data.Vector.Vinyl.Default.Types
   , DefaultBoxed(..)
   ) where
 
-import Data.Default (Default(def))
-import qualified Data.Vector as B
-import qualified Data.Vector.Unboxed as U
-import qualified Data.Text as Text
-import qualified Data.Text.Lazy as LText
-import qualified Data.ByteString as ByteString
-import qualified Data.ByteString.Lazy as LByteString
-import qualified Data.Vector.Generic.Mutable as GM
-import qualified Data.Vector.Generic as G
-import Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
-import Data.Int (Int8,Int16,Int32,Int64)
-import Data.Word (Word8,Word16,Word32,Word64)
-import Data.List.TypeLevel (Snd)
-import Data.Time (Day)
+import qualified Data.ByteString                          as ByteString
+import qualified Data.ByteString.Lazy                     as LByteString
+import           Data.Default                             (Default (def))
+import           Data.Int                                 (Int16, Int32, Int64,
+                                                           Int8)
+import qualified Data.Text                                as Text
+import qualified Data.Text.Lazy                           as LText
+import           Data.Time                                (Day)
+import           Data.Tuple.TypeLevel                     (Snd)
+import qualified Data.Vector                              as B
+import qualified Data.Vector.Generic                      as G
+import qualified Data.Vector.Generic.Mutable              as GM
+import qualified Data.Vector.Unboxed                      as U
+import           Data.Vector.Vinyl.Default.Types.Deriving (derivingVector)
+import           Data.Word                                (Word16, Word32,
+                                                           Word64, Word8)
 
 newtype VectorVal t = VectorVal { getVectorVal :: DefaultVector t t }
 deriving instance Eq (DefaultVector t t) => Eq (VectorVal t)
@@ -117,13 +119,13 @@ instance ( HasDefaultVector a
     (MVectorVal (GM.basicUnsafeSlice s e v))
     (MVectorVal (GM.basicUnsafeSlice s e u))
   {-# INLINE basicUnsafeSlice #-}
-  basicOverlaps (MV_Tuple2 (MVectorVal v1) (MVectorVal u1)) (MV_Tuple2 (MVectorVal v2) (MVectorVal u2)) = 
+  basicOverlaps (MV_Tuple2 (MVectorVal v1) (MVectorVal u1)) (MV_Tuple2 (MVectorVal v2) (MVectorVal u2)) =
     GM.basicOverlaps v1 v2 || GM.basicOverlaps u1 u2
   {-# INLINE basicOverlaps #-}
   basicUnsafeNew n = MV_Tuple2 <$> fmap MVectorVal (GM.basicUnsafeNew n)
                                <*> fmap MVectorVal (GM.basicUnsafeNew n)
   {-# INLINE basicUnsafeNew #-}
-  basicUnsafeReplicate n (a,b) = 
+  basicUnsafeReplicate n (a,b) =
     MV_Tuple2 <$> (fmap MVectorVal (GM.basicUnsafeReplicate n a))
               <*> (fmap MVectorVal (GM.basicUnsafeReplicate n b))
   {-# INLINE basicUnsafeReplicate #-}
@@ -180,8 +182,8 @@ instance ( HasDefaultVector a
   {-# INLINE basicUnsafeThaw #-}
   basicLength (V_Tuple2 (VectorVal v) _) = G.basicLength v
   {-# INLINE basicLength #-}
-  basicUnsafeSlice s e (V_Tuple2 (VectorVal v) (VectorVal u)) = 
-    (V_Tuple2 (VectorVal (G.basicUnsafeSlice s e v)) 
+  basicUnsafeSlice s e (V_Tuple2 (VectorVal v) (VectorVal u)) =
+    (V_Tuple2 (VectorVal (G.basicUnsafeSlice s e v))
               (VectorVal (G.basicUnsafeSlice s e u)))
   {-# INLINE basicUnsafeSlice #-}
   basicUnsafeIndexM (V_Tuple2 (VectorVal v) (VectorVal u)) n = do

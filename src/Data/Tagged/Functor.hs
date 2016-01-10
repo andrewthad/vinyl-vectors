@@ -2,11 +2,11 @@
 
 module Data.Tagged.Functor where
 
-import Data.List.TypeLevel
-import Data.Vinyl.Core
-import Data.Vinyl.Functor (Identity(..))
-import Data.Proxy
-import GHC.TypeLits
+import           Data.Proxy
+import           Data.Tuple.TypeLevel (Fst, Snd)
+import           Data.Vinyl.Core
+import           Data.Vinyl.Functor   (Identity (..))
+import           GHC.TypeLits
 
 newtype TaggedFunctor (f :: b -> *) (x :: (a,b)) =
   TaggedFunctor { getTaggedFunctor :: f (Snd x) }
@@ -17,9 +17,9 @@ instance Ord (f (Snd x)) => Ord (TaggedFunctor f x) where
 instance Show (f (Snd x)) => Show (TaggedFunctor f x) where
   show (TaggedFunctor f) = "TaggedFunctor (" ++ show f ++ ")"
 
-showSymbolTaggedFunctor :: forall f x. (KnownSymbol (Fst x), Show (f (Snd x))) 
+showSymbolTaggedFunctor :: forall f x. (KnownSymbol (Fst x), Show (f (Snd x)))
   => TaggedFunctor f x -> String
-showSymbolTaggedFunctor (TaggedFunctor f) = 
+showSymbolTaggedFunctor (TaggedFunctor f) =
   (symbolVal (Proxy :: Proxy (Fst x))) ++ ": " ++ show f
 
 tagIdentity :: proxy k -> v -> TaggedFunctor Identity '(k,v)
@@ -34,7 +34,7 @@ untagFunctor (TaggedFunctor f) = f
 liftTaggedFunctor :: (f v -> a) -> TaggedFunctor f '(k,v) -> a
 liftTaggedFunctor g (TaggedFunctor f) = g f
 
--- tagRecord :: Rec proxy rs -> Rec f rs -> 
+-- tagRecord :: Rec proxy rs -> Rec f rs ->
 
 rtraverseTagged
   :: Applicative h
@@ -42,12 +42,12 @@ rtraverseTagged
   -> Rec (TaggedFunctor f) rs
   -> h (Rec (TaggedFunctor g) rs)
 rtraverseTagged _ RNil      = pure RNil
-rtraverseTagged f (TaggedFunctor x :& xs) = 
+rtraverseTagged f (TaggedFunctor x :& xs) =
   (:&) <$> fmap TaggedFunctor (f x) <*> rtraverseTagged f xs
 {-# INLINABLE rtraverseTagged #-}
 
-rtraverseIdentityTagged :: Applicative f 
-  => Rec (TaggedFunctor f) rs 
+rtraverseIdentityTagged :: Applicative f
+  => Rec (TaggedFunctor f) rs
   -> f (Rec (TaggedFunctor Identity) rs)
 rtraverseIdentityTagged = rtraverseTagged (fmap Identity)
 {-# INLINABLE rtraverseIdentityTagged #-}

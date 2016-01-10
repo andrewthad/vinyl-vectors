@@ -1,43 +1,54 @@
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE PolyKinds         #-}
 
 module Data.Vinyl.Named where
 
-import GHC.TypeLits (Symbol,KnownSymbol,symbolVal,CmpSymbol)
-import Data.Map.Strict (Map)
-import Data.Proxy (Proxy(Proxy))
-import Unsafe.Coerce (unsafeCoerce)
-import qualified Data.Map.Strict as Map
-import GHC.Prim (Any)
-import Data.Vinyl.Functor (Identity(..),Compose(..),Const(..))
-import Data.Vinyl.Core (Rec(..),RecApplicative(rpure),rtraverse)
-import Data.Vinyl.TypeLevel (RecAll)
-import Data.List.TypeLevel -- (ListAll,Fst,Snd,ConstrainFst,ConstrainSnd)
-import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
-import Data.Typeable (Typeable,TypeRep,typeRep,eqT)
-import Data.Vinyl.Functor    (Identity)
-import Test.QuickCheck.Arbitrary
-import GHC.Exts (Constraint)
-import Data.Vector.Vinyl.Default.Types (VectorVal(..),HasDefaultVector(..))
-import Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (indexMany, recFullJoinIndicesImmutable)
-import Data.Type.Equality ((:~:)(Refl))
-import qualified Data.Vector.Hybrid  as Hybrid
-import qualified Data.Vector.Unboxed as U
-import Data.Constraint
-import Data.Tagged.Functor (TaggedFunctor(..),showSymbolTaggedFunctor)
-import qualified Data.Vector.Generic as G
-import Data.Coerce (coerce)
-import Data.List.NonEmpty(NonEmpty((:|)))
+import           Data.Coerce                                         (coerce)
+import           Data.Constraint
+import           Data.Dynamic                                        (Dynamic, dynTypeRep, fromDynamic,
+                                                                      toDyn)
+import           Data.List.NonEmpty                                  (NonEmpty ((:|)))
+import           Data.List.TypeLevel
+import           Data.List.TypeLevel.Constraint
+import           Data.Map.Strict                                     (Map)
+import qualified Data.Map.Strict                                     as Map
+import           Data.Proxy                                          (Proxy (Proxy))
+import           Data.Tagged.Functor                                 (TaggedFunctor (..), showSymbolTaggedFunctor)
+import           Data.Tuple.TypeLevel
+import           Data.Type.Equality                                  ((:~:) (Refl))
+import           Data.Typeable                                       (TypeRep,
+                                                                      Typeable,
+                                                                      eqT,
+                                                                      typeRep)
+import           Data.TypeString
+import qualified Data.Vector.Generic                                 as G
+import qualified Data.Vector.Hybrid                                  as Hybrid
+import qualified Data.Vector.Unboxed                                 as U
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (indexMany, recFullJoinIndicesImmutable)
+import           Data.Vector.Vinyl.Default.Types                     (HasDefaultVector (..), VectorVal (..))
+import           Data.Vinyl.Core                                     (Rec (..), RecApplicative (rpure),
+                                                                      rtraverse)
+import           Data.Vinyl.DictFun
+import           Data.Vinyl.Functor                                  (Compose (..), Const (..), Identity (..))
+import           Data.Vinyl.Functor                                  (Identity)
+import           Data.Vinyl.TypeLevel                                (RecAll)
+import           GHC.Exts                                            (Constraint)
+import           GHC.Prim                                            (Any)
+import           GHC.TypeLits                                        (CmpSymbol, KnownSymbol,
+                                                                      Symbol,
+                                                                      symbolVal)
+import           Test.QuickCheck.Arbitrary
+import           Unsafe.Coerce                                       (unsafeCoerce)
 
-type RelOpConstraints = 
+type RelOpConstraints =
       (ConstrainFst TypeString :&: ConstrainSnd Typeable)
   :&: (ConstrainSnd HasDefaultVector :&: ConstrainSnd Ord :&: ConstrainSnd Show)
 
-newtype UncurriedTagged (x :: (a,*)) = 
+newtype UncurriedTagged (x :: (a,*)) =
   UncurriedTagged { getUncurriedTagged :: Snd x }
 
-showSymbolTaggedRec :: 
-  ( ListAll as (ConstrainFst KnownSymbol) 
+showSymbolTaggedRec ::
+  ( ListAll as (ConstrainFst KnownSymbol)
   , ListAll as (ConstrainSnd Show)
   ) => Rec (TaggedFunctor Identity) as -> String
 showSymbolTaggedRec RNil = ""
@@ -62,13 +73,13 @@ type family Zip (ks :: [k]) (vs :: [v]) :: [(k,v)] where
 -- Vector related stuff
 ------------------------------------
 
-type ListAllJoinConstraints rs = 
-  ( ListAll rs Typeable 
+type ListAllJoinConstraints rs =
+  ( ListAll rs Typeable
   , ListAll rs Ord
   , ListAll rs HasDefaultVector
   , ListAll rs Show
   )
-type JoinConstraints r = 
+type JoinConstraints r =
   ( Typeable r
   , Ord r
   , HasDefaultVector r
@@ -76,25 +87,25 @@ type JoinConstraints r =
   )
 
 data HiddenVector where
-  HiddenVector :: forall (a :: *). 
-    JoinConstraints a => 
+  HiddenVector :: forall (a :: *).
+    JoinConstraints a =>
     VectorVal a -> HiddenVector
 
 instance Show HiddenVector where
   show (HiddenVector (VectorVal a)) = "HiddenVector (" ++ show (G.toList a) ++ ")"
 
 data HiddenRec (f :: * -> *) where
-  HiddenRec :: forall (rs :: [*]) (f :: * -> *). 
-    ListAllJoinConstraints rs => 
+  HiddenRec :: forall (rs :: [*]) (f :: * -> *).
+    ListAllJoinConstraints rs =>
     Rec f rs -> HiddenRec f
 
 data NonEmptyHiddenRec (f :: * -> *) where
-  NonEmptyHiddenRec :: forall (r :: *) (rs :: [*]) (f :: * -> *). 
-    ListAllJoinConstraints (r ': rs) => 
+  NonEmptyHiddenRec :: forall (r :: *) (rs :: [*]) (f :: * -> *).
+    ListAllJoinConstraints (r ': rs) =>
     Rec f (r ': rs) -> NonEmptyHiddenRec f
 
 -- data ConstrainedNonEmptyHiddenRec (f :: * -> *) (c :: * -> Constraint) where
---   ConstrainedNonEmptyHiddenRec :: 
+--   ConstrainedNonEmptyHiddenRec ::
 --     RecAll f (r ': rs) c => Rec f (r ': rs) -> ConstrainedNonEmptyHiddenRec f c
 
 -- This only works if `rs` does not contain duplicate names
@@ -111,11 +122,11 @@ data NonEmptyHiddenRec (f :: * -> *) where
 --   (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (Snd r :~: a)) of
 --     Just Refl -> TaggedFunctor (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec rs mnext
 --     Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
---   where 
+--   where
 --   keyStr = (typeString (Proxy :: Proxy (Fst r)))
 
 -- This only works if `rs` does not contain duplicate names
-indexedHiddenVectorMapsToRec :: 
+indexedHiddenVectorMapsToRec ::
   ( ListAll rs (ConstrainFst TypeString)
   , ListAll rs (ConstrainSnd Typeable)
   , ListAll rs (ConstrainSnd HasDefaultVector)
@@ -125,7 +136,7 @@ indexedHiddenVectorMapsToRec ::
   -> Rec (TaggedFunctor VectorVal) rs
 indexedHiddenVectorMapsToRec prec = go prec . mkMap
   where
-  mkMap xs = -- Map.unionsWith (\_ _ -> error "indexedHiddenVectorMapsToRec: duplicate field") 
+  mkMap xs = -- Map.unionsWith (\_ _ -> error "indexedHiddenVectorMapsToRec: duplicate field")
     Map.unions $ map (\(ixs,m) -> fmap (\h -> (ixs,h)) m) xs
   go :: forall rs proxy.
         ( ListAll rs (ConstrainFst TypeString)
@@ -157,21 +168,21 @@ hiddenVectorMapToRec :: forall rs m proxy.
   -> Map String HiddenVector
   -> Rec (TaggedFunctor VectorVal) rs
 hiddenVectorMapToRec RNil m = if Map.null m then RNil else error "hiddenVectorMapToRec: should be empty"
-hiddenVectorMapToRec ((_ :: proxy r) :& rs) m = case Map.lookup keyStr m of 
+hiddenVectorMapToRec ((_ :: proxy r) :& rs) m = case Map.lookup keyStr m of
   Just (HiddenVector (v :: VectorVal a)) -> case (eqT :: Maybe (Snd r :~: a)) of
     Just Refl -> TaggedFunctor v :& hiddenVectorMapToRec rs (Map.delete keyStr m)
     Nothing   -> error ("hiddenVectorMapToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
   Nothing -> error ("hiddenVectorMapToRec: missing key " ++ keyStr)
   where keyStr = (typeString (Proxy :: Proxy (Fst r)))
 
-recToHiddenVectorMap :: forall rs. 
+recToHiddenVectorMap :: forall rs.
   ( ListAll rs RelOpConstraints
   )
-  => Rec (TaggedFunctor VectorVal) rs 
+  => Rec (TaggedFunctor VectorVal) rs
   -> Map String HiddenVector
 recToHiddenVectorMap RNil = Map.empty
-recToHiddenVectorMap (u@(TaggedFunctor v) :& rs) = 
-  Map.insert 
+recToHiddenVectorMap (u@(TaggedFunctor v) :& rs) =
+  Map.insert
     (typeString (proxyFst u))
     (HiddenVector v)
     (recToHiddenVectorMap rs)
@@ -189,8 +200,8 @@ nonEmptyHiddenVectorsToHiddenRec :: NonEmpty HiddenVector -> NonEmptyHiddenRec V
 nonEmptyHiddenVectorsToHiddenRec (HiddenVector a :| as) = case hiddenVectorsToHiddenRec as of
   HiddenRec rs -> NonEmptyHiddenRec (a :& rs)
 
-uncheckedFullJoinIndices :: 
-     [(String,String)] 
+uncheckedFullJoinIndices ::
+     [(String,String)]
   -> Map String HiddenVector
   -> Map String HiddenVector
   -> Hybrid.Vector U.Vector U.Vector (Int,Int)
@@ -198,7 +209,7 @@ uncheckedFullJoinIndices matchedCols aMap bMap = r
   where
   aHRec = hiddenVectorsToHiddenRec (uncheckedLookupMany (map fst matchedCols) aMap)
   bHRec = hiddenVectorsToHiddenRec (uncheckedLookupMany (map snd matchedCols) bMap)
-  r = uncheckedHiddenRecCoersion aHRec bHRec 
+  r = uncheckedHiddenRecCoersion aHRec bHRec
       (\a b -> case a of
         RNil -> error "uncheckedFullJoinIndices: empty record"
         _ :& _ -> recFullJoinIndicesImmutable a b
@@ -211,11 +222,11 @@ uncheckedLookupMany (k : ks) m = case Map.lookup k m of
   Just v -> v : uncheckedLookupMany ks m
 
 uncheckedHiddenRecCoersion :: forall f a.
-     HiddenRec f 
-  -> HiddenRec f 
+     HiddenRec f
+  -> HiddenRec f
   -> (forall rs. ListAllJoinConstraints rs => Rec f rs -> Rec f rs -> a)
   -> a
-uncheckedHiddenRecCoersion (HiddenRec a) (HiddenRec b) f = 
+uncheckedHiddenRecCoersion (HiddenRec a) (HiddenRec b) f =
   case uncheckedListEqualitiy a b of
     Refl -> f a b
 
@@ -230,7 +241,7 @@ uncheckedListEqualitiy (a :& aNext) (b :& bNext) =
     Refl -> case uncheckedEqT a b of
       Refl -> Refl
 
-uncheckedEqT :: forall proxy1 proxy2 a b. (Typeable a, Typeable b) 
+uncheckedEqT :: forall proxy1 proxy2 a b. (Typeable a, Typeable b)
   => proxy1 a -> proxy2 b -> a :~: b
 uncheckedEqT _ _ = case (eqT :: Maybe (a :~: b)) of
   Nothing -> error "uncheckedEqT: mismatched types"
@@ -238,10 +249,10 @@ uncheckedEqT _ _ = case (eqT :: Maybe (a :~: b)) of
 
 
 -- A convenience function
-zipNamesExplicit :: forall f proxy ks vs. 
+zipNamesExplicit :: forall f proxy ks vs.
   Rec proxy ks -> Rec f vs -> Rec (TaggedFunctor f) (Zip ks vs)
 zipNamesExplicit RNil RNil = RNil
-zipNamesExplicit ((_ :: proxy k) :& ks) ((r :: f v) :& rs) = 
+zipNamesExplicit ((_ :: proxy k) :& ks) ((r :: f v) :& rs) =
   (TaggedFunctor r :: TaggedFunctor f '(k, v)) :& zipNamesExplicit ks rs
 
 zipNames :: forall f proxy ks vs. RecApplicative ks

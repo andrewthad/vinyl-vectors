@@ -1,13 +1,13 @@
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -----------------------------------------------------------------------------
 -- |
 -- Copyright   :  Andrew Martin
@@ -142,30 +142,56 @@ module Data.Vector.Vinyl.Default.NonEmpty.Tagged
   , freeze, thaw, copy, unsafeFreeze, unsafeThaw, unsafeCopy
   ) where
 
-import Control.Monad.Primitive
-import Control.Monad.ST
-import Data.Vector.Vinyl.Default.NonEmpty.Tagged.Internal
-import Data.Vinyl.Core
-import Data.Vinyl.Functor (Identity(..))
-import Data.Vector.Vinyl.Default.Types (VectorVal)
-import Data.Tagged.Functor (TaggedFunctor(..))
-import Data.List.TypeLevel (Snd)
-import Data.Proxy
-import qualified Data.Vector.Generic as G
-import Prelude hiding 
-  ( length, null,
-    replicate, (++), concat,
-    head, last,
-    init, tail, take, drop, splitAt, reverse,
-    map, concatMap,
-    zipWith, zipWith3, zip, zip3, unzip, unzip3,
-    filter, takeWhile, dropWhile, span, break,
-    elem, notElem,
-    foldl, foldl1, foldr, foldr1,
-    all, any, sum, product, minimum, maximum,
-    scanl, scanl1, scanr, scanr1,
-    enumFromTo, enumFromThenTo,
-    mapM, mapM_ )
+import           Control.Monad.Primitive
+import           Control.Monad.ST
+import           Data.Proxy
+import           Data.Tagged.Functor                                (TaggedFunctor (..))
+import           Data.Tuple.TypeLevel                               (Snd)
+import qualified Data.Vector.Generic                                as G
+import           Data.Vector.Vinyl.Default.NonEmpty.Tagged.Internal
+import           Data.Vector.Vinyl.Default.Types                    (VectorVal)
+import           Data.Vinyl.Core
+import           Data.Vinyl.Functor                                 (Identity (..))
+import           Prelude                                            hiding (all,
+                                                                     any, break,
+                                                                     concat,
+                                                                     concatMap,
+                                                                     drop,
+                                                                     dropWhile,
+                                                                     elem, enumFromThenTo,
+                                                                     enumFromTo,
+                                                                     filter,
+                                                                     foldl,
+                                                                     foldl1,
+                                                                     foldr,
+                                                                     foldr1,
+                                                                     head, init,
+                                                                     last,
+                                                                     length,
+                                                                     map, mapM,
+                                                                     mapM_,
+                                                                     maximum,
+                                                                     minimum,
+                                                                     notElem,
+                                                                     null,
+                                                                     product,
+                                                                     replicate,
+                                                                     reverse,
+                                                                     scanl,
+                                                                     scanl1,
+                                                                     scanr,
+                                                                     scanr1,
+                                                                     span,
+                                                                     splitAt,
+                                                                     sum, tail,
+                                                                     take,
+                                                                     takeWhile,
+                                                                     unzip,
+                                                                     unzip3,
+                                                                     zip, zip3,
+                                                                     zipWith,
+                                                                     zipWith3,
+                                                                     (++))
 
 
 -- Length
@@ -173,12 +199,12 @@ import Prelude hiding
 
 -- | /O(1)/ Yield the length of the vector.
 length :: forall (r :: (a,*)) (k :: KProxy a) rs. G.Vector VectorVal (Snd r) => (Vector k) (Rec (TaggedFunctor Identity) (r ': rs)) -> Int
-length (V (TaggedFunctor r :& _)) = G.length r 
+length (V (TaggedFunctor r :& _)) = G.length r
 {-# INLINE length #-}
 
 -- | /O(1)/ Test whether a vector if empty
 null :: forall (r :: (a,*)) (k :: KProxy a) rs. G.Vector VectorVal (Snd r) => (Vector k) (Rec (TaggedFunctor Identity) (r ': rs)) -> Bool
-null (V (TaggedFunctor r :& _)) = G.null r 
+null (V (TaggedFunctor r :& _)) = G.null r
 {-# INLINE null #-}
 
 
@@ -663,9 +689,9 @@ forM_ = G.forM_
 --                -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c')
 --   zipWith = G.zipWith
 --   {-# INLINE zipWith #-}
---   
+--
 --   -- | Zip three vectors with the given function.
---   
+--
 --   zipWith3 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -674,7 +700,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d')
 --   zipWith3 = G.zipWith3
 --   {-# INLINE zipWith3 #-}
---   
+--
 --   zipWith4 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -684,7 +710,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d') -> (Vector k) u v (e,e')
 --   zipWith4 = G.zipWith4
 --   {-# INLINE zipWith4 #-}
---   
+--
 --   zipWith5 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -695,7 +721,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d') -> (Vector k) u v (e,e') -> (Vector k) u v (f,f')
 --   zipWith5 = G.zipWith5
 --   {-# INLINE zipWith5 #-}
---   
+--
 --   zipWith6 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -707,7 +733,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d') -> (Vector k) u v (e,e') -> (Vector k) u v (f,f') -> (Vector k) u v (g,g')
 --   zipWith6 = G.zipWith6
 --   {-# INLINE zipWith6 #-}
---   
+--
 --   -- | /O(min(m,n))/ Zip two vectors with a function that also takes the
 --   -- elements' indices.
 --   izipWith :: ( G.Vector u a, G.Vector v a'
@@ -717,7 +743,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c')
 --   izipWith = G.izipWith
 --   {-# INLINE izipWith #-}
---   
+--
 --   -- | Zip three vectors and their indices with the given function.
 --   izipWith3 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
@@ -727,7 +753,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d')
 --   izipWith3 = G.izipWith3
 --   {-# INLINE izipWith3 #-}
---   
+--
 --   izipWith4 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -737,7 +763,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d') -> (Vector k) u v (e,e')
 --   izipWith4 = G.izipWith4
 --   {-# INLINE izipWith4 #-}
---   
+--
 --   izipWith5 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'
@@ -748,7 +774,7 @@ forM_ = G.forM_
 --                 -> (Vector k) u v (a,a') -> (Vector k) u v (b,b') -> (Vector k) u v (c,c') -> (Vector k) u v (d,d') -> (Vector k) u v (e,e') -> (Vector k) u v (f,f')
 --   izipWith5 = G.izipWith5
 --   {-# INLINE izipWith5 #-}
---   
+--
 --   izipWith6 :: ( G.Vector u a, G.Vector v a'
 --               , G.Vector u b, G.Vector v b'
 --               , G.Vector u c, G.Vector v c'

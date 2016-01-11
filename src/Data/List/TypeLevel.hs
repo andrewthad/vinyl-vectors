@@ -20,11 +20,13 @@ import           Data.Constraint.Unsafe         (unsafeCoerceConstraint)
 import           Data.List.TypeLevel.Cmp
 import           Data.List.TypeLevel.Constraint
 import           Data.List.TypeLevel.Union      (Union)
+import           Data.List.TypeLevel.Witness
 import           Data.Proxy
 import           Data.Tuple.TypeLevel
 import           Data.Type.Bool
 import           Data.Type.Equality
 import           Data.Typeable
+import           Data.TypeString
 import           Data.Vinyl.Core                (Rec (..))
 import           Data.Vinyl.DictFun
 import           Data.Vinyl.TypeLevel           (RecAll)
@@ -67,18 +69,8 @@ unionRec ls@(l@DictFun :& lsNext) rs@(r@DictFun :& rsNext) = case applyCmpString
     Just Refl -> l :& unionRec lsNext rsNext
     Nothing -> error "unionRec: impossible case"
 
-eqTProxy :: (Typeable a, Typeable b) => proxy1 a -> proxy2 b -> Maybe (a :~: b)
-eqTProxy _ _ = eqT
-
 ordListDict :: ListAll rs c => Proxy c -> OrdList rs -> Rec (DictFun c) rs
 ordListDict p ordList = reifyDictFun p (ordRec ordList)
-
-data OrdList (cs :: [(m,n)]) where
-  OrdListNil    :: OrdList '[]
-  OrdListSingle :: OrdList '[c]
-  OrdListCons   :: ( Cmp (Fst x) (Fst y) ~ GT )
-    => OrdList (y ': cs)
-    -> OrdList (x ': y ': cs)
 
 ordListLength :: OrdList rs -> Int
 ordListLength = go
@@ -97,7 +89,8 @@ class ImplicitOrdList rs where
 instance ImplicitOrdList '[n] where
   implicitOrdList = OrdListSingle
 
-instance (ImplicitOrdList (n ': ns), Cmp (Fst m) (Fst n) ~ GT) => ImplicitOrdList (m ': n ': ns) where
+instance (ImplicitOrdList (n ': ns), Cmp (Fst m) (Fst n) ~ 'GT, Cmp (Fst n) (Fst m) ~ 'LT)
+    => ImplicitOrdList (m ': n ': ns) where
   implicitOrdList = OrdListCons (implicitOrdList :: OrdList (n ': ns))
 
 listHeadProxy :: OrdList (a ': as) -> Proxy a
@@ -105,11 +98,6 @@ listHeadProxy _ = Proxy
 
 listHead2Proxy :: OrdList (a ': b ': as) -> Proxy b
 listHead2Proxy _ = Proxy
-
-data Sublist (super :: [k]) (sub :: [k]) where
-  SublistNil   :: Sublist '[] '[]
-  SublistSuper :: Sublist super sub -> Sublist (c ': super) sub
-  SublistBoth  :: Sublist super sub -> Sublist (c ': super) (c ': sub)
 
 sublistSuperToRec :: Sublist super sub -> Rec Proxy super
 sublistSuperToRec = go
@@ -199,11 +187,6 @@ applyCmpString a b = case compare (typeString a) (typeString b) of
   EQ -> unsafeCoerce EQy
   GT -> unsafeCoerce GTy
 
--- uses unsafe coerce but it actually safe
-applyCmpTransitive :: proxy1 a -> proxy2 b -> proxy3 c
-  -> (Cmp a b ~ r, Cmp b c ~ r) :- (Cmp a c ~ r)
-applyCmpTransitive _ _ _ = unsafeCoerceConstraint
-
 invertLt :: proxy1 a -> proxy2 b
   -> (Cmp a b ~ LT) :- (Cmp b a ~ GT)
 invertLt _ _ = unsafeCoerceConstraint
@@ -249,11 +232,13 @@ ordSublist = go
       ores@OrdListSingle -> case sublistHeadGte snext onext of
         Right Refl -> OrdListCons ores
         Left ApplyCmpRes -> case applyCmpTransitive (proxyFst $ listHeadProxy ordList) (proxyFst $ listHead2Proxy ordList) (proxyFst $ listHeadProxy ores) of
-          Sub Dict -> OrdListCons ores
+          Sub Dict -> case invertGt (proxyFst $ listHeadProxy ordList) (proxyFst $ listHeadProxy ores) of
+            Sub Dict -> OrdListCons ores
       ores@(OrdListCons _) -> case sublistHeadGte snext onext of
         Right Refl -> OrdListCons ores
         Left ApplyCmpRes -> case applyCmpTransitive (proxyFst $ listHeadProxy ordList) (proxyFst $ listHead2Proxy ordList) (proxyFst $ listHeadProxy ores) of
-          Sub Dict -> OrdListCons ores
+          Sub Dict -> case invertGt (proxyFst $ listHeadProxy ordList) (proxyFst $ listHeadProxy ores) of
+            Sub Dict -> OrdListCons ores
 
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
@@ -262,10 +247,6 @@ type family Tail (xs :: [k]) :: [k] where
 
 data ApplyCmpRes (a :: k) (b :: k) (r :: Ordering) where
   ApplyCmpRes :: (Cmp a b ~ r) => ApplyCmpRes a b r
-
-tupleEquality :: proxy1 a -> proxy2 b
-  -> (Fst a ~ Fst b, Snd a ~ Snd b) :- (a ~ b)
-tupleEquality _ _ = unsafeCoerceConstraint
 
 typeListHead :: forall x xs proxy. proxy (x ': xs) -> Proxy x
 typeListHead _ = Proxy

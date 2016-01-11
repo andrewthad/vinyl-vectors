@@ -61,8 +61,12 @@ library
     , Data.Tuple.TypeLevel
     , Data.List.TypeLevel
     , Data.List.TypeLevel.Cmp
+    , Data.List.TypeLevel.Witness
+    , Data.List.TypeLevel.Witness.OrdList
+    , Data.List.TypeLevel.Witness.BoundedList
     , Data.List.TypeLevel.Union
     , Data.List.TypeLevel.Subtraction
+    , Data.List.TypeLevel.Intersection
     , Data.List.TypeLevel.Constraint
     , Data.List.Symbol
     , Data.Proxy.TH

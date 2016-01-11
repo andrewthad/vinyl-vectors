@@ -9,6 +9,7 @@ import           Data.Constraint
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Subtraction (Subtraction)
 import           Data.List.TypeLevel.Union       (Union)
+import           Data.List.TypeLevel.Witness
 import           Data.Proxy
 import           Data.Relation
 import           Data.Relation.Backend           (Naive (..), Test (..))

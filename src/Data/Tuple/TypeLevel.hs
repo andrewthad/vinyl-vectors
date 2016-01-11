@@ -2,8 +2,10 @@
 
 module Data.Tuple.TypeLevel where
 
+import           Data.Constraint
+import           Data.Constraint.Unsafe
 import           Data.Proxy
-import           GHC.Exts   (Constraint)
+import           GHC.Exts               (Constraint)
 
 -- | First element of a type pair.
 type family Fst (k :: (m,n)) where
@@ -19,9 +21,13 @@ instance c (Fst x) => ConstrainFst c x
 class c (Snd x) => ConstrainSnd (c :: k -> Constraint) (x :: (j,k))
 instance c (Snd x) => ConstrainSnd c x
 
-proxyFst :: forall (proxy :: (a,b) -> *) (x :: (a,b)). proxy x -> Proxy (Fst x)
+proxyFst :: proxy x -> Proxy (Fst x)
 proxyFst _ = Proxy
 
 proxySnd :: proxy x -> Proxy (Snd x)
 proxySnd _ = Proxy
+
+tupleEquality :: proxy1 a -> proxy2 b
+  -> (Fst a ~ Fst b, Snd a ~ Snd b) :- (a ~ b)
+tupleEquality _ _ = unsafeCoerceConstraint
 

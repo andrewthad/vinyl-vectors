@@ -3,7 +3,7 @@
 module Data.Vinyl.Class.Implication where
 
 import           Data.Constraint
-import           Data.List.TypeLevel            (eqTProxy)
+import           Data.List.TypeLevel.Cmp        (eqTProxy)
 import           Data.List.TypeLevel.Constraint (ListAll)
 import           Data.Proxy                     (Proxy (Proxy))
 import           Data.Tagged.Functor            (TaggedFunctor (..))

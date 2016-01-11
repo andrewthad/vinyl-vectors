@@ -16,6 +16,7 @@ import           Data.List.NonEmpty                                         (Non
 import qualified Data.List.NonEmpty                                         as NonEmpty
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Constraint
+import           Data.List.TypeLevel.Witness
 import           Data.Map                                                   (Map)
 import qualified Data.Map.Strict                                            as Map
 import           Data.Monoid                                                (Any (..))

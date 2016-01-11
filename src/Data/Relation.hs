@@ -5,9 +5,10 @@ module Data.Relation where
 import           Data.Constraint
 import qualified Data.List                       as List
 import           Data.List.TypeLevel
-import           Data.List.TypeLevel.Cmp         (Cmp)
+import           Data.List.TypeLevel.Cmp
 import           Data.List.TypeLevel.Constraint  ((:&:))
 import           Data.List.TypeLevel.Union       (Union)
+import           Data.List.TypeLevel.Witness
 import           Data.Proxy                      (Proxy (..))
 import           Data.Tagged.Functor             (TaggedFunctor (..))
 import           Data.Tuple.TypeLevel
@@ -73,7 +74,7 @@ predOr :: (cs ~ Union as bs, ImplicitSublist cs as, ImplicitSublist cs bs)
   => Pred as -> Pred bs -> Pred cs
 predOr = PredOr implicitSublist implicitSublist
 
-colEq :: (Cmp key1 key2 ~ 'GT)
+colEq :: (Cmp key1 key2 ~ 'GT, Cmp key2 key1 ~ 'LT)
   => Proxy val -> Proxy key1 -> Proxy key2 -> Pred '[ '(key1,val), '(key2,val)]
 colEq _ _ _ = PredEqCols (OrdListCons OrdListSingle)
 
@@ -101,9 +102,9 @@ equijoinExplicit :: forall ls rs name1 name2 v a.
   -> Sublist rs '[ '(name2,v)]
   -> RelOp a ls -> RelOp a rs -> RelOp a (Union ls rs)
 equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
-  (DictFun, DictFun) -> case applyCmpString (proxyFst lDict) (proxyFst rDict) of
-    LTy -> error "lt... hmmm"
-    GTy -> RelRestrict
+  (DictFun, DictFun) -> case compareTypes (proxyFst lDict) (proxyFst rDict) of
+    CmpLT -> error "lt... hmmm"
+    CmpGT -> RelRestrict
       (unionSublist
         (relOpNamesTypes ls)
         (relOpNamesTypes rs)
@@ -112,7 +113,7 @@ equijoinExplicit subLs subRs ls rs = case (lDict,rDict) of
         subLs subRs
       )
       (PredEqCols (OrdListCons OrdListSingle)) (RelJoin ls rs)
-    EQy -> error "hmmm"
+    CmpEQ -> error "hmmm"
   where
   lDict :: DictFun (ConstrainFst TypeString) '(name1,v)
   lDict = case projectRec subLs (relOpTypes ls) of

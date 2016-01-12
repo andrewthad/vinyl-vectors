@@ -4,7 +4,7 @@ module Data.List.TypeLevel.Union where
 
 import           Data.Constraint
 import           Data.List.TypeLevel.Cmp
-import           Data.List.TypeLevel.Constraint ((:&:))
+import           Data.List.TypeLevel.Constraint ((:&:), RequireEquality)
 import           Data.Tuple.TypeLevel
 import           Data.Type.Equality
 import           Data.Typeable
@@ -21,7 +21,7 @@ type family Union (a :: [(k,v)]) (b :: [(k,v)]) :: [(k,v)] where
 
 type family UnionCmp (o :: Ordering) (a :: (k,v)) (as :: [(k,v)]) (b :: (k,v)) (bs :: [(k,v)]) where
   UnionCmp 'LT a as b bs = b ': Union (a ': as) bs
-  UnionCmp 'EQ a as b bs = a ': Union as bs
+  UnionCmp 'EQ a as b bs = RequireEquality (Snd a) (Snd b) (a ': Union as bs)
   UnionCmp 'GT a as b bs = a ': Union as (b ': bs)
 
 leftIdentity :: Rec proxy xs -> Union '[] xs :~: xs
@@ -45,23 +45,29 @@ associativity = go
     Refl -> case leftIdentity cs of
       Refl -> Refl
   go as bs RNil = case rightIdentity bs of
-    Refl -> case rightIdentity (rec as bs) of
+    Refl -> case rightIdentity (dict as bs) of
       Refl -> Refl
   go RNil bs cs = case leftIdentity bs of
-    Refl -> case leftIdentity (rec bs cs) of
+    Refl -> case leftIdentity (dict bs cs) of
       Refl -> Refl
   go (a@DictFun :& anext) (b@DictFun :& bnext) (c@DictFun :& cnext) =
     case compareTypes (proxyFst a) (proxyFst b) of
-      CmpEQ -> case compareTypes (proxyFst b) (proxyFst c) of
-        CmpEQ -> case go anext bnext cnext of
-          Refl -> Refl
-        CmpLT -> case go (a :& anext) (b :& bnext) cnext of
-          Refl -> Refl
-        CmpGT -> case go anext bnext (c :& cnext) of
-          Refl -> Refl
+      CmpEQ -> case eqTProxy (proxySnd a) (proxySnd b) of
+        Nothing -> error "union associativity error"
+        Just Refl -> case compareTypes (proxyFst b) (proxyFst c) of
+          CmpEQ -> case go anext bnext cnext of
+            Refl -> case eqTProxy (proxySnd b) (proxySnd c) of
+              Nothing -> error "union associativity error"
+              Just Refl -> Refl
+          CmpLT -> case go (a :& anext) (b :& bnext) cnext of
+            Refl -> Refl
+          CmpGT -> case go anext bnext (c :& cnext) of
+            Refl -> Refl
       CmpGT -> case compareTypes (proxyFst b) (proxyFst c) of
         CmpEQ -> case go anext (b :& bnext) (c :& cnext) of
-          Refl -> Refl
+          Refl -> case eqTProxy (proxySnd b) (proxySnd c) of
+            Nothing -> error "union associativity error"
+            Just Refl -> Refl
         CmpGT -> case go anext (b :& bnext) (c :& cnext) of
           Refl -> case applyCmpTransitive (proxyFst a) (proxyFst b) (proxyFst c) of
             Sub Dict -> Refl
@@ -74,7 +80,9 @@ associativity = go
             Refl -> Refl
       CmpLT -> case compareTypes (proxyFst b) (proxyFst c) of
         CmpEQ -> case go (a :& anext) bnext cnext of
-          Refl -> Refl
+          Refl -> case eqTProxy (proxySnd b) (proxySnd c) of
+            Nothing -> error "union associativity error"
+            Just Refl -> Refl
         CmpLT -> case go (a :& anext) (b :& bnext) cnext of
           Refl -> case applyCmpTransitive (proxyFst a) (proxyFst b) (proxyFst c) of
             Sub Dict -> Refl
@@ -104,15 +112,37 @@ commutativity = go
       CmpGT -> case go asNext (b :& bsNext) of
         Refl -> Refl
 
-rec :: Rec CmpDict ls -> Rec CmpDict rs -> Rec CmpDict (Union ls rs)
-rec RNil RNil = RNil
-rec (l :& ls) RNil = l :& rec ls RNil
-rec RNil (r :& rs) = r :& rec RNil rs
-rec ls@(l@DictFun :& lsNext) rs@(r@DictFun :& rsNext) =
-  case compareTypes (proxyFst l) (proxyFst r) of
-    CmpLT -> r :& rec ls rsNext
-    CmpGT -> l :& rec lsNext rs
-    CmpEQ -> case eqTProxy (proxySnd l) (proxySnd r) of
-      Just Refl -> l :& rec lsNext rsNext
-      Nothing -> error "rec: impossible case"
+-- This will prefer the left record if they share a field
+rec :: Rec CmpDict ls -> Rec CmpDict rs -> Rec f ls -> Rec f rs
+    -> Rec f (Union ls rs)
+rec = go
+  where
+  go :: forall ls rs f. Rec CmpDict ls -> Rec CmpDict rs
+     -> Rec f ls -> Rec f rs -> Rec f (Union ls rs)
+  go RNil RNil RNil RNil = RNil
+  go (_ :& lsCmp) RNil (l :& ls) RNil = l :& go lsCmp RNil ls RNil
+  go RNil (_ :& rsCmp) RNil (r :& rs) = r :& go RNil rsCmp RNil rs
+  go lsCmp@(DictFun :& lsCmpNext) rsCmp@(DictFun :& rsCmpNext) (l :& ls) (r :& rs) =
+    case compareTypes (proxyFst l) (proxyFst r) of
+      CmpLT -> r :& go lsCmp rsCmpNext (l :& ls) rs
+      CmpGT -> l :& go lsCmpNext rsCmp ls (r :& rs)
+      CmpEQ -> case eqTProxy (proxySnd l) (proxySnd r) of
+        Nothing -> error "union rec: messed up"
+        Just Refl -> l :& go lsCmpNext rsCmpNext ls rs
+
+dict :: Rec CmpDict ls -> Rec CmpDict rs -> Rec CmpDict (Union ls rs)
+dict = go
+  where
+  go :: forall ls rs. Rec CmpDict ls -> Rec CmpDict rs
+     -> Rec CmpDict (Union ls rs)
+  go RNil RNil = RNil
+  go (l :& ls) RNil = l :& go ls RNil
+  go RNil (r :& rs) = r :& go RNil rs
+  go ls@(l@DictFun :& lsNext) rs@(r@DictFun :& rsNext) =
+    case compareTypes (proxyFst l) (proxyFst r) of
+      CmpLT -> r :& go ls rsNext
+      CmpGT -> l :& go lsNext rs
+      CmpEQ -> case eqTProxy (proxySnd l) (proxySnd r) of
+        Just Refl -> l :& go lsNext rsNext
+        Nothing -> error "union dict: impossible case"
 

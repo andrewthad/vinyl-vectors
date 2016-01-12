@@ -11,3 +11,6 @@ type family ListAll (ts :: [k]) (c :: k -> Constraint) :: Constraint where
 class (ca x, cb x) => (ca :&: cb) x
 instance (ca x, cb x) => (ca :&: cb) x
 
+type family RequireEquality (a :: k) (b :: k) (c :: j) :: j where
+  RequireEquality a a c = c
+

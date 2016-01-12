@@ -452,15 +452,6 @@ weakenRecAll RNil       entails = weakenNil
 weakenRecAll (fx :& rs) entails = weakenCons rs entails
                                 $ weakenRecAll rs entails
 
-weakenRecDictFun :: forall c1 c2 proxy rs.
-     proxy c2
-  -> (forall a. c1 a :- c2 a)
-  -> Rec (DictFun c1) rs
-  -> Rec (DictFun c2) rs
-weakenRecDictFun _ _ RNil = RNil
-weakenRecDictFun p ent ((DictFun :: DictFun c1 r) :& rs) = case (ent :: (c1 r :- c2 r))  of
-  Sub Dict -> DictFun :& weakenRecDictFun p ent rs
-
 recDictFunToDict :: Rec (DictFun c) rs -> Dict (ListAll rs c)
 recDictFunToDict RNil = Dict
 recDictFunToDict (DictFun :& rs) = case recDictFunToDict rs of

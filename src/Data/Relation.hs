@@ -37,19 +37,6 @@ data Pred (rs :: [(k,*)]) where
   PredEqCols  :: OrdList '[ '(key1,val), '(key2,val)]
               -> Pred '[ '(key1,val), '(key2,val)]
 
--- data Relation (a :: [(k,*)] -> *) (rs :: [(k,*)]) where
---   RelationNull    :: a '[] -> NullRelArity -> Relation a '[] -- first item not needed
---   RelationPresent :: a (r ': rs) -> Relation a (r ': rs)
-
--- instance (Ord (Rec (TaggedFunctor Identity) rs)) => Eq (Relation RTest rs) where
---   RelationNull _ a == RelationNull _ b = a == b
---   RelationPresent (RTest a) == RelationPresent (RTest b) =
---     List.sort a == List.sort b
---
--- instance (Show (Rec (TaggedFunctor Identity) rs)) => Show (Relation RTest rs) where
---   show (RelationNull _ a) = "RelationNull " ++ show a
---   show (RelationPresent (RTest a)) = "RelationPresent (" ++ show a ++ ")"
-
 data RelOp (a :: [(k,*)] -> *) (rs :: [(k,*)]) where
   RelTable    ::
        Rec (DictFun MinimalConstraints) rs

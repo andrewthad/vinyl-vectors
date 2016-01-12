@@ -15,6 +15,13 @@ import           Data.Vinyl.DictFun                      (DictFun (..))
 
 type Intersection as bs = Subtraction as (Subtraction as bs)
 
+-- This function is unusual because it is left biased. Maybe not.
+rec :: Rec CmpDict ls -> Rec CmpDict rs -> Rec f ls -> Rec f (Intersection ls rs)
+rec lsCmp rsCmp ls = Subtraction.rec lsCmp (Subtraction.dict lsCmp rsCmp) ls
+
+dict :: Rec CmpDict ls -> Rec CmpDict rs -> Rec CmpDict (Intersection ls rs)
+dict ls rs = rec ls rs ls
+
 commutativity :: Rec CmpDict as -> Rec CmpDict bs -> OrdList as -> OrdList bs
   -> Intersection as bs :~: Intersection bs as
 commutativity = go
@@ -34,7 +41,7 @@ commutativity = go
         Nothing -> error "intersection commutativity failure"
         Just Refl -> case tupleEquality a b of
           Sub Dict -> case go asNext bsNext asOrdNext bsOrdNext of
-            Refl -> case upperBound2 (OrdList.toBoundedList asOrd) (OrdList.toBoundedList bsOrd) asNext bsNext asOrdNext bsOrdNext of
+            Refl -> case Subtraction.upperBound2 (OrdList.toBoundedList asOrd) (OrdList.toBoundedList bsOrd) asNext bsNext asOrdNext bsOrdNext of
               (BoundedListCons,BoundedListCons) -> Refl
               (BoundedListCons,BoundedListNil)  -> Refl
               (BoundedListNil,BoundedListCons)  -> Refl
@@ -46,44 +53,6 @@ commutativity = go
         Refl -> case selfEquality (proxyFst a) of
           Refl -> Refl
 
-upperBound2 ::
-     BoundedList u as -> BoundedList u bs
-  -> Rec CmpDict as -> Rec CmpDict bs
-  -> OrdList as -> OrdList bs
-  -> (BoundedList u (Subtraction as bs), BoundedList u (Subtraction bs as))
-upperBound2 asBound bsBound asCmp bsCmp asOrd bsOrd =
-  ( upperBound asBound asCmp bsCmp asOrd bsOrd
-  , upperBound bsBound bsCmp asCmp bsOrd asOrd
-  )
-
-upperBound :: BoundedList u as -> Rec CmpDict as -> Rec CmpDict bs
-  -> OrdList as -> OrdList bs -> BoundedList u (Subtraction as bs)
-upperBound = go
-  where
-  go :: forall u as bs. BoundedList u as -> Rec CmpDict as -> Rec CmpDict bs
-     -> OrdList as -> OrdList bs -> BoundedList u (Subtraction as bs)
-  go BoundedListNil RNil RNil OrdListNil OrdListNil = BoundedListNil
-  go BoundedListCons (_ :& asCmpNext) RNil asOrd OrdListNil =
-    case Subtraction.rightIdentity asCmpNext of
-      Refl -> BoundedListCons
-  go BoundedListNil RNil (_ :& bsCmpNext) OrdListNil bsOrd =
-    case Subtraction.leftIdentity bsCmpNext of
-      Refl -> BoundedListNil
-  go bl@BoundedListCons asCmp@(a@DictFun :& asCmpNext) bsCmp@(b@DictFun :& bsCmpNext) asOrd bsOrd = case asOrd of
-    OrdListSingle -> let
-      bsOrdNext = OrdList.tail bsOrd
-      in case compareTypes (proxyFst a) (proxyFst b) of
-        CmpLT -> go bl asCmp bsCmpNext asOrd bsOrdNext
-        CmpGT -> BoundedListCons
-        CmpEQ -> case Subtraction.leftIdentity bsCmpNext of
-          Refl -> BoundedListNil
-    OrdListCons asOrdNext -> let
-      bsOrdNext = OrdList.tail bsOrd
-      in case compareTypes (proxyFst a) (proxyFst b) of
-        CmpLT -> go bl asCmp bsCmpNext asOrd bsOrdNext
-        CmpGT -> BoundedListCons
-        CmpEQ -> case transitiveLT (proxyFst $ OrdList.head asOrdNext) (proxyFst a) (proxyFst $ BoundedList.getBound bl) of
-          Sub Dict -> go BoundedListCons asCmpNext bsCmpNext asOrdNext bsOrdNext
 
 -- proof :: BoundedList b as -> proxy1 bs
 --       -> Subtraction as (b ': bs) :~: Subtraction as bs

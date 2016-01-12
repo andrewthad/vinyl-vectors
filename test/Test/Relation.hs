@@ -1,6 +1,7 @@
 module Test.Relation where
 
 import           Data.List.TypeLevel
+import           Data.List.TypeLevel.Union      (Union)
 import           Data.Proxy
 import           Data.Proxy.TH
 import           Data.Relation
@@ -10,6 +11,7 @@ import           Data.Text                      (Text)
 import           Data.Time
 import qualified Data.Vector.Generic            as G
 import           Data.Vinyl                     hiding (Dict)
+import           Data.Vinyl.DictFun
 import           Data.Vinyl.Functor             (Lift (..))
 import           Data.Vinyl.Functor             (Identity (..))
 import           Data.Vinyl.Lens                (rcast)
@@ -62,7 +64,7 @@ tag = TaggedFunctor . Identity
 -- note: Arnold has not worked anywhere
 personTemplate :: Lift (->) (ListToRelation a) (RelOp a) Person
 personTemplate = Lift $ \(ListToRelation f) -> RelTable
-  (implicitDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
+  (reifyDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
   implicitOrdList
   $ f $ Backend.Test $ map rcast
     ( [ tag 1 :& tag "Drew"   :& tag 24 :& RNil
@@ -80,7 +82,7 @@ personTemplate = Lift $ \(ListToRelation f) -> RelTable
 -- note: no one has worked at company 1002
 companyTemplate :: Lift (->) (ListToRelation a) (RelOp a) Company
 companyTemplate = Lift $ \(ListToRelation f) -> RelTable
-  (implicitDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
+  (reifyDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
   implicitOrdList
   $ f $ Backend.Test
     [ tag "Dunder Mifflin"   :& tag 1001 :& RNil
@@ -92,7 +94,7 @@ companyTemplate = Lift $ \(ListToRelation f) -> RelTable
 
 employmentTemplate :: Lift (->) (ListToRelation a) (RelOp a) Employment
 employmentTemplate = Lift $ \(ListToRelation f) -> RelTable
-  (implicitDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
+  (reifyDictFun (Proxy :: Proxy MinimalConstraints) (rpure Proxy))
   implicitOrdList
   $ f $ Backend.Test $ map rcast $
     ( [ tag 1 :& tag 1004 :& tag (fromGregorian 2002  8 13) :& RNil

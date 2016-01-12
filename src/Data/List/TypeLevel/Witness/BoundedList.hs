@@ -24,7 +24,8 @@ head BoundedListCons = Proxy
 getBound :: BoundedList u as -> Proxy u
 getBound _ = Proxy
 
--- boundWith :: proxy a -> BoundedList a (a
+boundWith :: (CmpDual (Fst x) (Fst y) 'GT) => proxy x -> BoundedList x (y ': as)
+boundWith _ = BoundedListCons
 
 -- tail :: BoundedList u (a ': as) -> BoundedList u as
 

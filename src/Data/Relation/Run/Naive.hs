@@ -5,26 +5,27 @@ module Data.Relation.Run.Naive
   , runTest
   ) where
 
-import           Control.Arrow                    (second)
+import           Control.Arrow                       (second)
 import           Data.Constraint
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Cmp
-import           Data.List.TypeLevel.Constraint   ((:&:))
-import           Data.List.TypeLevel.Intersection (Intersection)
-import qualified Data.List.TypeLevel.Intersection as Intersection
-import           Data.List.TypeLevel.Subtraction  (Subtraction)
-import qualified Data.List.TypeLevel.Subtraction  as Subtraction
-import           Data.List.TypeLevel.Union        (Union)
-import qualified Data.List.TypeLevel.Union        as Union
+import           Data.List.TypeLevel.Constraint      ((:&:))
+import           Data.List.TypeLevel.Intersection    (Intersection)
+import qualified Data.List.TypeLevel.Intersection    as Intersection
+import           Data.List.TypeLevel.Subtraction     (Subtraction)
+import qualified Data.List.TypeLevel.Subtraction     as Subtraction
+import           Data.List.TypeLevel.Union           (Union)
+import qualified Data.List.TypeLevel.Union           as Union
 import           Data.List.TypeLevel.Witness
-import           Data.Map                         (Map)
-import qualified Data.Map                         as Map
+import qualified Data.List.TypeLevel.Witness.OrdList as OrdList
+import           Data.Map                            (Map)
+import qualified Data.Map                            as Map
 import           Data.Proxy
 import           Data.Relation
-import           Data.Relation.Backend            (Naive (..), Test (..))
+import           Data.Relation.Backend               (Naive (..), Test (..))
 import           Data.Relation.Backend
-import           Data.Set                         (Set)
-import qualified Data.Set                         as Set
+import           Data.Set                            (Set)
+import qualified Data.Set                            as Set
 import           Data.Tagged.Functor
 import           Data.Tuple.TypeLevel
 import           Data.Type.Equality
@@ -32,9 +33,9 @@ import           Data.Typeable
 import           Data.TypeString
 import           Data.Vector.Vinyl.Default.Types
 import           Data.Vinyl.Class.Implication
-import           Data.Vinyl.Core                  hiding (Dict)
+import           Data.Vinyl.Core                     hiding (Dict)
 import           Data.Vinyl.DictFun
-import           Data.Vinyl.Functor               (Identity (..))
+import           Data.Vinyl.Functor                  (Identity (..))
 import           Data.Vinyl.Named
 
 -- newtype R rs = R (Set (Rec (TaggedFunctor Identity) rs))
@@ -155,12 +156,9 @@ naturalJoinExplicit lsOrd rsOrd lsDicts rsDicts lsRecs rsRecs = finalSet
   bsCmp :: Rec CmpDict bs
   bsCmp = Union.dict lsCmp rsCmp
   lsOnlyOrd :: OrdList lsOnly
-  lsOnlyOrd = error "uetn"
+  lsOnlyOrd = OrdList.sublist (Subtraction.sublist lsCmp rsCmp) lsOrd
   rsOnlyOrd :: OrdList rsOnly
-  rsOnlyOrd = error "uetn"
-  -- lsMap :: [(Rec (TaggedFunctor Identity) is, Rec (TaggedFunctor Identity) ls)]
-  -- lsMap = map lsSplit $ Set.toList lsRecs
-
+  rsOnlyOrd = OrdList.sublist (Subtraction.sublist rsCmp lsCmp) rsOrd
 
 predToPredicate :: Sublist super sub -> Pred sub -> Rec (DictFun (ConstrainSnd Ord)) super -> Rec (TaggedFunctor Identity) super -> Bool
 predToPredicate = go

@@ -1342,11 +1342,14 @@ copy = G.copy
 
 -- | Convert the vector to a record of vectors. This conversion is trivial
 -- since this vector type is internal represented as a structure of arrays.
-toRec :: forall (k :: KProxy a) (rs :: [(a,*)]). Vector k (Rec (TaggedFunctor Identity) rs) -> Rec (TaggedFunctor VectorVal) rs
+toRec :: forall (k :: KProxy a) (rs :: [(a,*)]). (k ~ 'KProxy) => Vector k (Rec (TaggedFunctor Identity) rs) -> Rec (TaggedFunctor VectorVal) rs
 toRec (V rs) = rs
 {-# INLINE toRec #-}
 
 -- | Convert a record of vectors to a vector.
-fromRec :: forall (k :: KProxy a) (rs :: [(a,*)]). Rec (TaggedFunctor VectorVal) rs -> Vector k (Rec (TaggedFunctor Identity) rs)
+fromRec :: forall (k :: KProxy a) (rs :: [(a,*)]). (k ~ 'KProxy) => Rec (TaggedFunctor VectorVal) rs -> Vector k (Rec (TaggedFunctor Identity) rs)
 fromRec rs = V rs
+{-# INLINE fromRec #-}
+
+-- proxyKey :: forall (k :: KProxy a) (rs :: [(a,*)]). proxy k
 

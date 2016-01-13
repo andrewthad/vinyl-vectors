@@ -158,7 +158,7 @@ type family SublistLookup (super :: [(k,v)]) (sub :: k) :: v where
   SublistLookup ('(k,v) ': xs) j = SublistLookup xs j
 
 -- This type family is partial.
-type family SublistLookupManyUnordered (super :: [(k,v)]) (sub :: [k]) :: [(k,v)]where
+type family SublistLookupManyUnordered (super :: [(k,v)]) (sub :: [k]) :: [(k,v)] where
   SublistLookupManyUnordered xs '[] = '[]
   SublistLookupManyUnordered xs (k ': ks) = '(k,SublistLookup xs k) ': SublistLookupManyUnordered xs ks
 

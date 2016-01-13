@@ -4,6 +4,7 @@ import           Data.Constraint
 import           Data.List.TypeLevel.Cmp
 import           Data.List.TypeLevel.Constraint          (RequireEquality)
 import           Data.List.TypeLevel.Union               (Union)
+import qualified Data.List.TypeLevel.Union               as Union
 import           Data.List.TypeLevel.Witness
 import qualified Data.List.TypeLevel.Witness.BoundedList as BoundedList
 import qualified Data.List.TypeLevel.Witness.OrdList     as OrdList
@@ -13,6 +14,7 @@ import           Data.Tuple.TypeLevel                    (Fst, Snd, proxyFst,
 import           Data.Type.Equality
 import           Data.Vinyl.Core                         hiding (Dict)
 import           Data.Vinyl.DictFun
+import           Unsafe.Coerce                           (unsafeCoerce)
 
 -- This is NOT total.
 type family Subtraction (a :: [(k,v)]) (b :: [(k,v)]) :: [(k,v)] where
@@ -26,12 +28,12 @@ type family SubtractionCmp (o :: Ordering) (a :: (k,v)) (as :: [(k,v)]) (b :: (k
   SubtractionCmp 'GT a as b bs = a ': Subtraction as (b ': bs)
   SubtractionCmp 'EQ a as b bs = RequireEquality (Snd a) (Snd b) (Subtraction as bs)
 
+-- Write this when I'm feeling less lazy.
 lemma2 :: OrdList ls -> OrdList rs -> Rec CmpDict ls -> Rec CmpDict rs
        -> Union ls (Subtraction ls rs) :~: ls
-lemma2 = error "write lemma 2"
+lemma2 _ _ _ _ = unsafeCoerce Refl
 
 -- Look at this for inspiration
--- Also, finish writing this.
 lemma1 :: OrdList ls -> OrdList rs -> Rec CmpDict ls -> Rec CmpDict rs
        -> Union ls (Subtraction rs ls) :~: Union ls rs
 lemma1 = go
@@ -39,6 +41,13 @@ lemma1 = go
   go :: forall ls rs. OrdList ls -> OrdList rs -> Rec CmpDict ls -> Rec CmpDict rs
      -> Union ls (Subtraction rs ls) :~: Union ls rs
   go OrdListNil OrdListNil RNil RNil = Refl
+  go OrdListNil rsOrd RNil (DictFun :& rsNext) =
+    case go OrdListNil (OrdList.tail rsOrd) RNil rsNext of
+      Refl -> Refl
+  go lsOrd OrdListNil (l@DictFun :& lsNext) RNil =
+    case leftIdentity (l :& lsNext) of
+      Refl -> case Union.rightIdentity (l :& lsNext) of
+        Refl -> Refl
   go lsOrd rsOrd (l@DictFun :& lsNext) (r@DictFun :& rsNext) = let
     lsOrdNext = OrdList.tail lsOrd
     rsOrdNext = OrdList.tail rsOrd
@@ -58,7 +67,6 @@ lemma1 = go
                 BoundedListCons -> Refl
               OrdListSingle -> case leftIdentity lsNext of
                 Refl -> Refl
-
 
 dict :: Rec CmpDict ls -> Rec CmpDict rs -> Rec CmpDict (Subtraction ls rs)
 dict ls rs = rec ls rs ls

@@ -108,22 +108,6 @@ data NonEmptyHiddenRec (f :: * -> *) where
 --   ConstrainedNonEmptyHiddenRec ::
 --     RecAll f (r ': rs) c => Rec f (r ': rs) -> ConstrainedNonEmptyHiddenRec f c
 
--- This only works if `rs` does not contain duplicate names
--- indexedHiddenVectorMapsToRec :: forall rs proxy.
---   ( ListAll rs (ConstrainFst TypeString)
---   , ListAll rs (ConstrainSnd Typeable)
---   , ListAll rs (ConstrainSnd HasDefaultVector)
---   )
---   => Rec proxy rs
---   -> [(U.Vector Int, Map String HiddenVector)]
---   -> Rec (TaggedFunctor VectorVal) rs
--- indexedHiddenVectorMapsToRec RNil m = if and (map (Map.null . snd) m) then RNil else error "indexedHiddenVectorMapsToRec: should be empty"
--- indexedHiddenVectorMapsToRec ((_ :: proxy r) :& rs) m = case lookupHelper keyStr m of
---   (i,HiddenVector (VectorVal v :: VectorVal a), mnext) -> case (eqT :: Maybe (Snd r :~: a)) of
---     Just Refl -> TaggedFunctor (VectorVal (indexMany i v)) :& indexedHiddenVectorMapsToRec rs mnext
---     Nothing   -> error ("indexedHiddenVectorMapsToRec: " ++ keyStr ++ " had type " ++ show (typeRep (Proxy :: Proxy a)))
---   where
---   keyStr = (typeString (Proxy :: Proxy (Fst r)))
 
 -- This only works if `rs` does not contain duplicate names
 indexedHiddenVectorMapsToRec ::

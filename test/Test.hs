@@ -27,6 +27,7 @@ import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join     (fullJo
 import           Data.Vector.Vinyl.Default.Types                         (VectorVal)
 
 import           Data.Relation.Backend                                   as Backend
+import qualified Data.Relation.Run.Basic                                 as Basic
 import qualified Data.Relation.Run.Naive                                 as Naive
 import qualified Data.Set                                                as Set
 import           Data.Vinyl.Arbitrary                                    (ArbitraryRec (..))
@@ -48,6 +49,12 @@ tests =
        $ ListToRelation (Backend.Naive . Set.fromList . Backend.getTest)
       :& ListToRelation (Backend.Naive . Set.fromList . Backend.getTest)
       :& ListToRelation (Backend.Naive . Set.fromList . Backend.getTest)
+      :& RNil
+  , testGroup "Relational Operations - Basic"
+    $ relationSpecTests Basic.runTest
+       $ ListToRelation (Backend.Basic "bla" . Basic.fromTest)
+      :& ListToRelation (Backend.Basic "bla" . Basic.fromTest)
+      :& ListToRelation (Backend.Basic "bla" . Basic.fromTest)
       :& RNil
   ]
 

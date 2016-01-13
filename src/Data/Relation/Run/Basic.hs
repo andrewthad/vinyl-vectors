@@ -1,6 +1,7 @@
 {-# LANGUAGE PolyKinds #-}
 module Data.Relation.Run.Basic
-  (
+  ( runTest
+  , fromTest
   ) where
 
 import           Control.Arrow                                              (first, second)
@@ -16,12 +17,13 @@ import           Data.List.NonEmpty                                         (Non
 import qualified Data.List.NonEmpty                                         as NonEmpty
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Constraint
+import qualified Data.List.TypeLevel.Union                                  as Union
 import           Data.List.TypeLevel.Witness
 import           Data.Map                                                   (Map)
 import qualified Data.Map.Strict                                            as Map
 import           Data.Monoid                                                (Any (..))
 import           Data.Monoid
-import           Data.Proxy                                                 (KProxy, Proxy (..))
+import           Data.Proxy                                                 (KProxy (..), Proxy (..))
 import           Data.Relation
 import           Data.Relation.Backend                                      (Basic (..), BasicInner (..), Common (..), NullRelArity (..), Test (..), nullRelArityToInt)
 import           Data.Set                                                   (Set)
@@ -42,10 +44,11 @@ import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication (lis
 import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal    as R
 import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join        (indexMany, indexManyPredicate, matchingIndicesExtraImmutable, sortWithIndices)
 import qualified Data.Vector.Vinyl.Default.NonEmpty.Tagged                  as VT
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Tagged.Implication      as VT
 import           Data.Vector.Vinyl.Default.Types                            (VectorVal (..))
 import           Data.Vector.Vinyl.Default.Types                            (HasDefaultVector)
 import           Data.Vinyl.Class.Implication                               (eqTRec, listAllOrd, listAllToRecAll)
-import           Data.Vinyl.Core                                            (Rec (..))
+import           Data.Vinyl.Core                                            hiding (Dict)
 import           Data.Vinyl.DictFun
 import           Data.Vinyl.Functor                                         (Compose (..), Identity)
 import           Data.Vinyl.Named
@@ -55,6 +58,30 @@ import           GHC.TypeLits                                               (Cmp
 import           Unsafe.Coerce                                              (unsafeCoerce)
 -- import qualified Data.Graph.Inductive.PatriciaTree as Patricia
 
+runTest :: RelOp Basic rs -> IO (Test rs)
+runTest r = return $ case runOptimized r of
+  CommonNull a -> case a of
+    NullRelZero -> Test []
+    NullRelOne -> Test []
+  CommonPresent rs -> let c = basicRelOpConstraints r in
+    case dictFunToListAll $ weakenRecDictFun (Proxy :: Proxy (ConstrainSnd HasDefaultVector)) (Sub Dict) c of
+      Dict -> case VT.listAllVector c of
+        Sub Dict -> Test $ VT.toList $ VT.fromRec rs
+
+fromTest :: forall r rs. (RecApplicative (r ': rs), ListAll (r ': rs) ExtraConstraints)
+  => Test (r ': rs) -> Common BasicInner (r ': rs)
+fromTest t = case dictFunToListAll (weakenRecDictFun (Proxy :: Proxy (ConstrainSnd HasDefaultVector)) (Sub Dict) c) of
+  Dict -> case VT.listAllVector (head $ getTest t) of
+    Sub Dict -> id
+     . CommonPresent
+     . BasicInner c
+     . VT.toRec
+     . VT.fromList
+     . getTest
+     $ t
+  where
+  c :: Rec (DictFun ExtraConstraints) (r ': rs)
+  c = reifyDictFun (Proxy :: Proxy ExtraConstraints) (rpure Proxy)
 
 type ExtraConstraints =
       ConstrainSnd HasDefaultVector
@@ -389,6 +416,7 @@ relOpRun :: forall (rs :: [(a,*)]) (k :: KProxy a).
   ( ListAll rs (ConstrainFst TypeString)
   , ListAll rs (ConstrainSnd Typeable)
   , ListAll rs (ConstrainSnd HasDefaultVector)
+  , k ~ 'KProxy
   )
   => RelOp Basic rs
   -> VT.Vector k (Rec (TaggedFunctor Identity) rs)
@@ -406,6 +434,26 @@ relOpRun r = id
   . canonizeURelOp
   . toUnchecked
   $ r
+
+runOptimized :: RelOp Basic rs -> Common (Rec (TaggedFunctor VectorVal)) rs
+runOptimized r =
+  case (ctxTypeable,ctxTypeString,ctxVector) of
+    (Dict,Dict,Dict) -> case (e,proxifyRelOp r) of
+      (Left a, RNil) -> error "uhen"
+      (Left _, _ :& _) -> error "runOptimized: impossible"
+      (Right vs, p@(_ :& _)) -> id
+        . CommonPresent
+        . (indexedHiddenVectorMapsToRec p .  fmap (second $ Map.mapKeys getCol))
+        . NonEmpty.toList
+        $ vs
+      (Right _, RNil) -> error "runOptimized: impossible"
+  where
+  UResult e = uRelOpRun . uPredGraphJoins . canonizeURelOp . toUnchecked $ r
+  ctxBasic = basicRelOpConstraints r
+  ctxPlain = relOpConstraints r
+  ctxTypeable = dictFunToListAll $ weakenRecDictFun (Proxy :: Proxy (ConstrainSnd Typeable)) (Sub Dict) ctxPlain
+  ctxTypeString = dictFunToListAll $ weakenRecDictFun (Proxy :: Proxy (ConstrainFst TypeString)) (Sub Dict) ctxPlain
+  ctxVector = dictFunToListAll $ weakenRecDictFun (Proxy :: Proxy (ConstrainSnd HasDefaultVector)) (Sub Dict) ctxBasic
 
 -- Runs the URelOp without first optimizing the AST. You should
 -- make sure that uPredGraphJoins has already been called on the
@@ -565,6 +613,7 @@ applyUPred upred m = go upred
     Just (ixs, HiddenVector (VectorVal v)) -> if typeRep v == rep
       then indexManyPredicate (== unsafeCoerce val) ixs v
       else error "applyUPred: mismatched types for UPredEqValue"
+  go (UPredOr a b) = U.zipWith (||) (go a) (go b)
 
 
 removeFirstHelper :: Ord k => k -> NonEmpty (a,Map k v) -> NonEmpty (a,Map k v)
@@ -583,4 +632,17 @@ removeFirstHelperList k ((a,m) : xs) = case Map.lookup k m of
 -- different maps in the list.
 listMapHelper :: Ord k => [(a,Map k v)] -> Map k (a,v)
 listMapHelper = Map.unionsWith (\_ _ -> error "listMapHelper: duplicate field") . map (\(a,m) -> fmap (\v -> (a,v)) m)
+
+basicRelOpConstraints :: RelOp Basic rs -> Rec (DictFun ExtraConstraints) rs
+basicRelOpConstraints = go
+  where
+  go :: forall as. RelOp Basic as -> Rec (DictFun ExtraConstraints) as
+  go (RelTable _ _ (Basic _ (CommonNull _))) = RNil
+  go (RelTable _ _ (Basic _ (CommonPresent (BasicInner c _)))) = c
+  go (RelRestrict _ _ relNext) = go relNext
+  go (RelProject sub relNext)  = projectRec sub (go relNext)
+  go (RelJoin a b)             = Union.rec
+    (weakenRecDictFun2 (Sub Dict) $ relOpConstraints a)
+    (weakenRecDictFun2 (Sub Dict) $ relOpConstraints b)
+    (go a) (go b)
 

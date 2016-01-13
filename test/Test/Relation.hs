@@ -37,8 +37,11 @@ relationSpecTests :: forall a.
 relationSpecTests a b = map ($ TestData a b)
   [ testCase "Restriction Test 1 (Value Equality)" . testRestriction1
   , testCase "Restriction Test 2 (Disjunction)" . testRestriction2
-  , testCase "Projection 1" . testProjection1
+  , testCase "Projection 1 (Contains Duplicates)" . testProjection1
+  , testCase "Projection 2 (Empty Null)" . testProjection2
+  , testCase "Projection 3 (Nonempty Null)" . testProjection3
   , testCase "Natural Join 1" . testNaturalJoin1
+  , testCase "Natural Join 2" . testNaturalJoin2
   ]
 
 type Person = Sort
@@ -162,6 +165,25 @@ testNaturalJoin1 (TestData run f) = case rapply allTemplates f of
        '["person_id","company_id","start_date","person_name","person_age"]
     )
 
+testNaturalJoin2 :: TestData a -> Assertion
+testNaturalJoin2 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ restrict
+                    ( predOr (valEq [pr1|"person_id"|] (1 :: Int))
+                             (valEq [pr1|"person_id"|] (2 :: Int))
+                    )
+                  $ naturalJoin employment person
+    actual @?= expected
+  where
+  expected = Backend.Test $ map rcast
+    ( [ tag 1 :& tag 1004 :& tag (fromGregorian 2002  8 13) :& tag "Drew"  :& tag 24 :& RNil
+      , tag 2 :& tag 1001 :& tag (fromGregorian 2004  3 23) :& tag "Alexa" :& tag 14 :& RNil
+      , tag 2 :& tag 1005 :& tag (fromGregorian 2001 10  2) :& tag "Alexa" :& tag 14 :& RNil
+      ]
+    :: Fields (Union Employment Person)
+       '["person_id","company_id","start_date","person_name","person_age"]
+    )
+
 testProjection1 :: TestData a -> Assertion
 testProjection1 (TestData run f) = case rapply allTemplates f of
   person :& company :& employment :& RNil -> do
@@ -174,3 +196,24 @@ testProjection1 (TestData run f) = case rapply allTemplates f of
       ] ::
     Fields Person '["person_age"]
     )
+
+testProjection2 :: TestData a -> Assertion
+testProjection2 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ project (Proxy :: Proxy '[])
+                  $ restrict (valEq [pr1|"person_age"|] (105 :: Int))
+                  $ person
+    actual @?= expected
+  where
+  expected = Backend.Test []
+
+testProjection3 :: TestData a -> Assertion
+testProjection3 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ project (Proxy :: Proxy '[])
+                  $ restrict (valEq [pr1|"person_age"|] (14 :: Int))
+                  $ person
+    actual @?= expected
+  where
+  expected = Backend.Test [RNil]
+

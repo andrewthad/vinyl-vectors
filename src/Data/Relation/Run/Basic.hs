@@ -58,11 +58,27 @@ import           GHC.TypeLits                                               (Cmp
 import           Unsafe.Coerce                                              (unsafeCoerce)
 -- import qualified Data.Graph.Inductive.PatriciaTree as Patricia
 
+data UPred
+  = UPredEqValue Col TypeRep Prim.Any -- like Dynamic
+  | UPredEqCols  Col   Col
+  | UPredAnd     UPred UPred
+  | UPredOr      UPred UPred
+  | UPredNot     UPred
+
+data URelOp
+  = URelProject (Set Col) URelOp
+  | URelJoin URelOp URelOp
+  | URelRestrict UPred URelOp
+  | URelTable UTable
+  | URelJoinMany (Patricia.Gr URelOp (Col,Col))
+  | URelBinary BinOp URelOp URelOp
+  | URelRename Col Col URelOp
+
 runTest :: RelOp Basic rs -> IO (Test rs)
 runTest r = return $ case runOptimized r of
   CommonNull a -> case a of
     NullRelZero -> Test []
-    NullRelOne -> Test []
+    NullRelOne -> Test [RNil]
   CommonPresent rs -> let c = basicRelOpConstraints r in
     case dictFunToListAll $ weakenRecDictFun (Proxy :: Proxy (ConstrainSnd HasDefaultVector)) (Sub Dict) c of
       Dict -> case VT.listAllVector c of
@@ -94,6 +110,7 @@ type ExtraConstraints =
 
 newtype UResult = UResult
   { getUResult :: Either NullRelArity (NonEmpty (U.Vector Int, Map Col HiddenVector)) }
+
 instance Show UResult where
   show (UResult e) = "UResult:\n" ++ case e of
     Left a -> show a
@@ -133,11 +150,10 @@ data UTable = UTable
   , utData    :: !(Either NullRelArity (Map Col HiddenVector))
   }
 
-
 -- partial function
-requireEqCol :: UPred -> (Col,Col)
-requireEqCol (UPredEqCols a b) = (a,b)
-requireEqCol _ = error "requireEqCol failed"
+requireEqCol :: UPred -> Maybe (Col,Col)
+requireEqCol (UPredEqCols a b) = Just (a,b)
+requireEqCol _ = Nothing
 
 -- The predicates passed to this function should be list
 -- of predication that should be ANDed together. None of
@@ -186,6 +202,10 @@ nonEmptyAppend (a :| as) (b :| bs) = a :| (as ++ [b] ++ bs)
 
 nonEmptyFoldl1 :: (a -> a -> a) -> NonEmpty a -> a
 nonEmptyFoldl1 g (a :| as) = List.foldl g a as
+
+nonEmptyFromList :: String -> [a] -> NonEmpty a
+nonEmptyFromList err [] = error err
+nonEmptyFromList _ (a:as) = a :| as
 
 -- Split up a predicate into two parts. The first is the
 -- subpredicates that contain the columns passed in. The
@@ -240,6 +260,9 @@ canonizeURelOpStep = go
           tell (Any True)
           return (URelJoin op1' op2')
         else fmap (URelProject cols) (go (URelJoin op1 op2))
+    -- Redo both of these later to make more optimal
+    URelRename _ _ _ -> URelProject cols <$> go opNext
+    URelBinary _ _ _ -> URelProject cols <$> go opNext
   go (URelRestrict pred opNext) = case opNext of
     URelTable a -> return (URelRestrict pred opNext)
     URelProject projCols op -> do
@@ -265,6 +288,13 @@ canonizeURelOpStep = go
             p : ps -> URelRestrict (uPredMergeAnd (p :| ps)) opJoin
       when (List.length pred1 > 0 || List.length pred2 > 0) $ tell (Any True)
       return opJoinRestrict
+    -- Redo both of these later to make more optimal
+    URelRename _ _ _ -> URelRestrict pred <$> go opNext
+    URelBinary _ _ _ -> URelRestrict pred <$> go opNext
+  go (URelBinary binOp op1 op2) = URelBinary binOp <$> go op1 <*> go op2
+  -- Redo this. We actually want to push renames all the way to
+  -- the bottom.
+  go (URelRename old new op) = URelRename old new <$> go op
 
 uPredGraphJoins :: URelOp -> URelOp
 uPredGraphJoins = go
@@ -274,10 +304,16 @@ uPredGraphJoins = go
   go (URelProject cols a) = URelProject cols (go a)
   go (URelJoinMany _) = error "uPredGraphJoins: URelJoinMany encountered"
   go u@(URelJoin a b) = URelJoinMany (makeGraph (execState (build u) mempty))
-  go (URelRestrict pred (URelJoin a b)) = error "write this"
+  -- go (URelRestrict pred (URelJoin a b)) = error "restriction on top on join: write this"
+  -- This will currently do an equijoin wrong. We need to add back the
+  -- other pattern.
   go (URelRestrict pred a) = URelRestrict pred (go a)
+  go (URelBinary binOp a b) = URelBinary binOp (go a) (go b)
+  go (URelRename old new a) = URelRename old new (go a)
   build :: URelOp -> State ([(Col,Col)],[URelOp]) ()
   build (URelTable a) = modify (second (URelTable a :))
+  build (URelBinary binOp a b) = modify (second (URelBinary binOp (go a) (go b) :))
+  build (URelRename old new a) = modify (second (URelRename old new (go a) :))
   build (URelProject cols a) = modify (second (URelProject cols (go a) :))
   build (URelJoin a b) = do
     mapM_ (\col -> modify (first ((col,col):)))
@@ -286,12 +322,12 @@ uPredGraphJoins = go
     build b
   build (URelJoinMany _) = error "uPredGraphJoins: URelJoinMany encountered"
   build (URelRestrict pred (URelJoin a b)) = do
-    -- TODO: Figure out a better story for OR predicates.
-    -- Right now, it just errors.
     let preds = NonEmpty.toList (uPredSplitAnd pred)
-        colPairs = map requireEqCol preds
-    modify (first (colPairs ++))
-    build (URelJoin a b)
+    case mapM requireEqCol preds of
+      Just colPairs -> do
+        modify (first (colPairs ++))
+        build (URelJoin a b)
+      Nothing -> modify (second (URelRestrict pred (go (URelJoin a b)) :))
   build (URelRestrict pred a) = modify (second (URelRestrict pred (go a) :))
 
 toUnchecked :: forall rs. RelOp Basic rs -> URelOp
@@ -314,24 +350,11 @@ toUnchecked = go
   go (RelRestrict sub pred relNext) = URelRestrict
     (predToUnchecked (projectRec sub (relOpNamesTypes relNext)) pred)
     (go relNext)
+  go (RelBinary binOp a b) = URelBinary binOp (go a) (go b)
 
 colsFromRec :: Rec (DictFun (ConstrainFst TypeString)) rs -> Set Col
 colsFromRec RNil = Set.empty
 colsFromRec (r@DictFun :& rs) = Set.insert (Col (typeString $ proxyFst r)) (colsFromRec rs)
-
-data UPred
-  = UPredEqValue Col TypeRep Prim.Any -- like Dynamic
-  | UPredEqCols  Col   Col
-  | UPredAnd     UPred UPred
-  | UPredOr      UPred UPred
-  | UPredNot     UPred
-
-data URelOp
-  = URelProject (Set Col) URelOp
-  | URelJoin URelOp URelOp
-  | URelRestrict UPred URelOp
-  | URelTable UTable
-  | URelJoinMany (Patricia.Gr URelOp (Col,Col))
 
 instance Show URelOp where
   show = showURelOp
@@ -411,6 +434,7 @@ uRelOpCols = go
   go (URelProject cols _) = cols
   go (URelRestrict _ op)  = go op
   go (URelJoin op1 op2)   = Set.union (go op1) (go op2)
+  go (URelJoinMany g)     = Set.unions (map (go . snd) (Graph.labNodes g))
 
 relOpRun :: forall (rs :: [(a,*)]) (k :: KProxy a).
   ( ListAll rs (ConstrainFst TypeString)
@@ -439,7 +463,7 @@ runOptimized :: RelOp Basic rs -> Common (Rec (TaggedFunctor VectorVal)) rs
 runOptimized r =
   case (ctxTypeable,ctxTypeString,ctxVector) of
     (Dict,Dict,Dict) -> case (e,proxifyRelOp r) of
-      (Left a, RNil) -> error "uhen"
+      (Left a, RNil) -> CommonNull a
       (Left _, _ :& _) -> error "runOptimized: impossible"
       (Right vs, p@(_ :& _)) -> id
         . CommonPresent
@@ -477,12 +501,69 @@ uRelOpRun = go
     UResult (Right xs) ->
       let mask = applyUPred pred (listMapHelper (NonEmpty.toList xs))
       in UResult (Right (fmap (first (U.ifilter (\i _ -> mask U.! i))) xs))
+  go (URelProject cols op) = case go op of
+    UResult (Left a) -> if Set.size cols == 0
+      then UResult (Left a)
+      else error "uRelOpRun: projecting non existent columns"
+    UResult (Right xs@((ixs, _) :| _))
+      | Set.null cols -> (UResult . Left) (if U.length ixs > 0 then NullRelOne else NullRelZero)
+      | allCols == cols -> UResult (Right xs)
+      -- The otherwise clause is currently wrong. It would be
+      -- right if one of the columns being projected were
+      -- a candidate key.
+      -- | otherwise       -> UResult $ Right $ fmap
+      --     (second $ Map.filterWithKey (\k _ -> Set.member k cols)) xs
+      | otherwise -> deduplicate remainingVals
+      where
+      allCols = Set.fromList $ join $ NonEmpty.toList $ fmap (Map.keys . snd) xs
+      remainingVals :: [(Col, (U.Vector Int, HiddenVector))]
+      remainingVals = id
+        $ join
+        $ fmap (\(ixs,m) -> map (\(k,h) -> (k,(ixs,h))) $ Map.toList m)
+        $ NonEmpty.toList
+        $ fmap (second $ Map.filterWithKey (\k _ -> Set.member k cols)) xs
   go (URelJoin _ _) =
     error "uRelOpRun: URelJoin should already have been replaced"
   go (URelJoinMany graph) = let
     nodes = Graph.labNodes graph
     graphResults = Graph.nmap go graph
     in performJoins graphResults
+  -- This can be made much more efficient if we know about dependencies
+  -- within the relation.
+  go (URelBinary binOp op1 op2) = case (getUResult (go op1),getUResult (go op2)) of
+    (Left a1, Left a2) -> UResult $ Left $ case binOp of
+      BinOpUnion        -> if a1 == NullRelOne || a2 == NullRelOne then NullRelOne else NullRelZero
+      BinOpIntersection -> if a1 == NullRelOne && a2 == NullRelOne then NullRelOne else NullRelZero
+      BinOpSubtraction  -> if a1 == NullRelOne && a2 == NullRelZero then NullRelOne else NullRelZero
+    (Right xs1, Right xs2) -> UResult $ Right $ case binOp of
+      BinOpUnion -> let
+        m1 = flattenVectorMap (NonEmpty.toList xs1)
+        m2 = flattenVectorMap (NonEmpty.toList xs2)
+        in error "uehotn"
+      _ -> error "uRelOpRun: write binary operations other than union"
+    (_,_) -> error "uRelOpRun: binary incorrect situation happened"
+  go (URelRename old new op) = case go op of
+    UResult (Left _) -> error "uRelOpRun: cannot call rename on 0 column relation"
+    UResult (Right xs) -> UResult . Right $ fmap (second $ Map.mapKeys replaceOld) xs
+    where
+    replaceOld :: Col -> Col
+    replaceOld c = if c == old then new else c
+
+flattenVectorMap :: [(U.Vector Int,Map Col HiddenVector)] -> [(Col,(U.Vector Int, HiddenVector))]
+flattenVectorMap = join . fmap (\(ixs,m) -> map (\(k,h) -> (k,(ixs,h))) $ Map.toList m)
+
+deduplicate :: [(Col,(U.Vector Int, HiddenVector))] -> UResult
+deduplicate xs = let
+  keys  = fmap fst xs
+  pairs = fmap snd xs
+  hvs1  = nonEmptyFromList "uRelOpRun: expected non empty list"
+        $ flattenIndexedHiddenVectors pairs
+  hrec  = removeDuplicates $ nonEmptyHiddenVectorsToHiddenRec hvs1
+  hvs2@(hvs2Head :| _) = hiddenRecToNonEmptyHiddenVectors hrec
+  newIxs = case hvs2Head of
+    HiddenVector (VectorVal v) -> U.enumFromN 0 (G.length v)
+  res = ((newIxs, Map.fromList $ uncheckedZip keys (NonEmpty.toList hvs2)) :| [])
+  in UResult $ Right res
 
 performJoins :: Patricia.Gr UResult (Col,Col) -> UResult
 performJoins = go
@@ -645,4 +726,5 @@ basicRelOpConstraints = go
     (weakenRecDictFun2 (Sub Dict) $ relOpConstraints a)
     (weakenRecDictFun2 (Sub Dict) $ relOpConstraints b)
     (go a) (go b)
+  go (RelBinary _ a _)         = go a
 

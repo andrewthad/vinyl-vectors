@@ -3,22 +3,25 @@
 module Data.Relation where
 
 import           Data.Constraint
-import qualified Data.List                       as List
+import qualified Data.List                           as List
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Cmp
-import           Data.List.TypeLevel.Constraint  ((:&:))
-import           Data.List.TypeLevel.Union       (Union)
+import           Data.List.TypeLevel.Constraint      ((:&:))
+import           Data.List.TypeLevel.Union           (Union)
 import           Data.List.TypeLevel.Witness
-import           Data.Proxy                      (Proxy (..))
-import           Data.Tagged.Functor             (TaggedFunctor (..))
+import qualified Data.List.TypeLevel.Witness.OrdList as OrdList
+import qualified Data.List.TypeLevel.Witness.Rec     as Rec
+import           Data.Proxy                          (Proxy (..))
+import           Data.Tagged.Functor                 (TaggedFunctor (..))
 import           Data.Tuple.TypeLevel
-import           Data.Typeable                   (Typeable)
+import           Data.Typeable                       (Typeable)
 import           Data.TypeString
-import           Data.Vector.Vinyl.Default.Types (VectorVal (..))
-import           Data.Vinyl.Core                 (Rec (..))
+import           Data.Vector.Vinyl.Default.Types     (VectorVal (..))
+import           Data.Vinyl.Core                     (Rec (..))
 import           Data.Vinyl.DictFun
-import           Data.Vinyl.Functor              (Identity (..))
-import           Data.Vinyl.Named                (RelOpConstraints, recToProxy)
+import           Data.Vinyl.Functor                  (Identity (..))
+import           Data.Vinyl.Named                    (RelOpConstraints,
+                                                      recToProxy)
 
 type MinimalConstraints =
       ConstrainFst TypeString
@@ -26,6 +29,11 @@ type MinimalConstraints =
   :&: ConstrainSnd Ord
 
 -- newtype RTest rs = RTest [Rec (TaggedFunctor Identity) rs]
+
+data BinOp
+  = BinOpSubtraction
+  | BinOpUnion
+  | BinOpIntersection
 
 data Pred (rs :: [(k,*)]) where
   PredNot     :: Pred rs -> Pred rs
@@ -46,6 +54,21 @@ data RelOp (a :: [(k,*)] -> *) (rs :: [(k,*)]) where
   RelJoin     :: RelOp backend as -> RelOp backend bs -> RelOp backend (Union as bs)
   RelRestrict :: Sublist super sub -> Pred sub -> RelOp backend super -> RelOp backend super
   RelProject  :: Sublist super sub -> RelOp backend super -> RelOp backend sub
+  RelBinary   :: BinOp -> RelOp backend rs -> RelOp backend rs -> RelOp backend rs
+  RelRename   :: Dict (TypeString s) -> InsertElemOrd '(s,v) ps ss -> RemoveElem '(r,v) rs ps
+              -> RelOp backend rs -> RelOp backend ss
+
+-- ts should be uniquely determined. add this as a constraint.
+rename :: forall v key1 rs ss key2 ts a.
+  ( v ~ Lookup key1 rs, ss ~ RemoveElemF '(key1,v) rs, TypeString key2
+  , ImplicitRemoveElem '(key1,v) rs ss, ImplicitInsertElemOrd '(key2,v) ss ts
+  , ts ~ InsertElemF '(key2,v) ss)
+  => Proxy key1 -> Proxy key2 -> RelOp a rs -> RelOp a ts
+rename _ _ r = RelRename
+  (Dict :: Dict (TypeString key2))
+  implicitInsertElemOrd
+  (implicitRemoveElem :: RemoveElem '(key1,v) rs ss)
+  r
 
 naturalJoin :: RelOp a as -> RelOp a bs -> RelOp a (Union as bs)
 naturalJoin = RelJoin
@@ -72,6 +95,9 @@ project _ relOp = RelProject (implicitSublist :: Sublist super sub) relOp
 
 restrict :: ImplicitSublist super sub => Pred sub -> RelOp a super -> RelOp a super
 restrict pred relOp = RelRestrict implicitSublist pred relOp
+
+union :: RelOp a rs -> RelOp a rs -> RelOp a rs
+union = RelBinary BinOpUnion
 
 equijoin :: forall a ls rs name1 name2 v.
   ( ImplicitSublist ls '[ '(name1,v)]
@@ -113,19 +139,31 @@ relOpOrdered :: RelOp a rs -> OrdList rs
 relOpOrdered = go
   where
   go :: forall a as. RelOp a as -> OrdList as
-  go (RelTable _ asOrd _)      = asOrd
-  go (RelRestrict _ _ relNext) = go relNext
-  go (RelProject sub relNext)  = ordSublist sub (go relNext)
-  go (RelJoin relA relB)       = ordUnion (go relA) (go relB)
+  go (RelTable _ asOrd _)       = asOrd
+  go (RelRestrict _ _ relNext)  = go relNext
+  go (RelProject sub relNext)   = ordSublist sub (go relNext)
+  go (RelJoin relA relB)        = OrdList.union (relOpNamesTypes relA) (relOpNamesTypes relB) (go relA) (go relB)
+  go (RelBinary _ a _)          = go a
+  go (RelRename _ ins rm relNext) = OrdList.insert ins (OrdList.remove rm (go relNext))
 
 relOpConstraints :: RelOp a rs -> Rec (DictFun MinimalConstraints) rs
 relOpConstraints = go
   where
   go :: forall a as. RelOp a as -> Rec (DictFun MinimalConstraints) as
-  go (RelTable c _ _)          = c -- ordListDict (Proxy :: Proxy (ConstrainFst TypeString :&: ConstrainSnd Typeable :&: ConstrainSnd Ord)) asOrd
-  go (RelRestrict _ _ relNext) = go relNext
-  go (RelProject sub relNext)  = projectRec sub (go relNext)
-  go (RelJoin a b)             = unionRec (go a) (go b)
+  go (RelTable c _ _)           = c -- ordListDict (Proxy :: Proxy (ConstrainFst TypeString :&: ConstrainSnd Typeable :&: ConstrainSnd Ord)) asOrd
+  go (RelRestrict _ _ relNext)  = go relNext
+  go (RelProject sub relNext)   = projectRec sub (go relNext)
+  go (RelJoin a b)              = unionRec (go a) (go b)
+  go (RelBinary _ a _)          = go a
+  go (RelRename Dict ins rm relNext) = case Rec.remove rm (go relNext) of
+    (DictFun, recMinus) -> Rec.insert (OrdList.downgradeInsert ins) DictFun recMinus
+
+relOpTypeable :: forall a rs. RelOp a rs -> Rec (DictFun (ConstrainSnd Typeable)) rs
+relOpTypeable = id
+  . weakenRecDictFun
+      (Proxy :: Proxy (ConstrainSnd Typeable))
+      (Sub Dict)
+  . relOpConstraints
 
 relOpTypes :: forall a rs. RelOp a rs -> Rec (DictFun (ConstrainFst TypeString)) rs
 relOpTypes = id

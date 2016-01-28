@@ -42,6 +42,10 @@ relationSpecTests a b = map ($ TestData a b)
   , testCase "Projection 3 (Nonempty Null)" . testProjection3
   , testCase "Natural Join 1" . testNaturalJoin1
   , testCase "Natural Join 2" . testNaturalJoin2
+  , testCase "Natural Join 3 (Pushable Disjunction Afterwards)" . testNaturalJoin3
+  , testCase "Natural Join 4 (Nonpushable Disjunction Afterwards)" . testNaturalJoin4
+  , testCase "Natural Join 5 (Nonpushable Disjunction Afterwards, Join on Top)" . testNaturalJoin5
+  , testCase "Union 1 (Identity)" . testUnion1
   ]
 
 type Person = Sort
@@ -184,6 +188,61 @@ testNaturalJoin2 (TestData run f) = case rapply allTemplates f of
        '["person_id","company_id","start_date","person_name","person_age"]
     )
 
+testNaturalJoin3 :: TestData a -> Assertion
+testNaturalJoin3 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ restrict
+                    ( predOr (valEq [pr1|"person_id"|] (1 :: Int))
+                             (valEq [pr1|"company_id"|] (1003 :: Int))
+                    )
+                  $ naturalJoin employment person
+    actual @?= expected
+  where
+  expected = Backend.Test $ map rcast
+    ( [ tag 1 :& tag 1004 :& tag (fromGregorian 2002  8 13) :& tag "Drew"   :& tag 24 :& RNil
+      , tag 6 :& tag 1003 :& tag (fromGregorian 2002 11 14) :& tag "Carlos" :& tag 20 :& RNil
+      ]
+    :: Fields (Union Employment Person)
+       '["person_id","company_id","start_date","person_name","person_age"]
+    )
+
+testNaturalJoin4 :: TestData a -> Assertion
+testNaturalJoin4 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ restrict
+                    ( predOr (valEq [pr1|"person_name"|] ("Drew" :: Text))
+                             (valEq [pr1|"start_date"|] (fromGregorian 2002 11 14))
+                    )
+                  $ naturalJoin employment person
+    actual @?= expected
+  where
+  expected = Backend.Test $ map rcast
+    ( [ tag 1 :& tag 1004 :& tag (fromGregorian 2002  8 13) :& tag "Drew"   :& tag 24 :& RNil
+      , tag 6 :& tag 1003 :& tag (fromGregorian 2002 11 14) :& tag "Carlos" :& tag 20 :& RNil
+      ]
+    :: Fields (Union Employment Person)
+       '["person_id","company_id","start_date","person_name","person_age"]
+    )
+
+testNaturalJoin5 :: TestData a -> Assertion
+testNaturalJoin5 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ naturalJoin company
+                  $ restrict
+                    ( predOr (valEq [pr1|"person_name"|] ("Drew" :: Text))
+                             (valEq [pr1|"start_date"|] (fromGregorian 2002 11 14))
+                    )
+                  $ naturalJoin employment person
+    actual @?= expected
+  where
+  expected = Backend.Test $ map rcast
+    ( [ tag "Moes Tavern" :& tag 1 :& tag 1004 :& tag (fromGregorian 2002  8 13) :& tag "Drew"   :& tag 24 :& RNil
+      , tag "Monks Diner" :& tag 6 :& tag 1003 :& tag (fromGregorian 2002 11 14) :& tag "Carlos" :& tag 20 :& RNil
+      ]
+    :: Fields (Union Company (Union Employment Person))
+       '["company_name", "person_id","company_id","start_date","person_name","person_age"]
+    )
+
 testProjection1 :: TestData a -> Assertion
 testProjection1 (TestData run f) = case rapply allTemplates f of
   person :& company :& employment :& RNil -> do
@@ -216,4 +275,70 @@ testProjection3 (TestData run f) = case rapply allTemplates f of
     actual @?= expected
   where
   expected = Backend.Test [RNil]
+
+testUnion1 :: TestData a -> Assertion
+testUnion1 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ union company company
+    actual @?= expected
+  where
+  expected = Backend.Test
+    [ tag "Dunder Mifflin"   :& tag 1001 :& RNil
+    , tag "Spade and Archer" :& tag 1002 :& RNil
+    , tag "Monks Diner"      :& tag 1003 :& RNil
+    , tag "Moes Tavern"      :& tag 1004 :& RNil
+    , tag "The Krusty Krab"  :& tag 1005 :& RNil
+    ]
+
+testUnion2 :: TestData a -> Assertion
+testUnion2 (TestData run f) = case rapply allTemplates f of
+  person :& company :& employment :& RNil -> do
+    actual <- run $ union
+      (rename [pr1|"person_id"|] [pr1|"foo"|] (project [pr|"person_id"|] person))
+      (rename [pr1|"company_id"|] [pr1|"foo"|] (project [pr|"company_id"|] company))
+    actual @?= expected
+  where
+  expected = Backend.Test
+    [ tag 1001 :& RNil
+    , tag 1002 :& RNil
+    , tag 1003 :& RNil
+    , tag 1004 :& RNil
+    , tag 1005 :& RNil
+    , tag 1 :& RNil
+    , tag 2 :& RNil
+    , tag 3 :& RNil
+    , tag 4 :& RNil
+    , tag 5 :& RNil
+    , tag 6 :& RNil
+    , tag 7 :& RNil
+    ]
+
+-- type PersonBig = Sort
+--   '[ '("person_name", Text)
+--    , '("person_id"  , Int)
+--    , '("person_age" , Int)
+--    , '("person_weight" , Int)
+--    , '("person_height" , Int)
+--    , '("person_allergies" , Int)
+--    , '("person_alive" , Bool)
+--    , '("person_is_weasel" , Bool)
+--    , '("person_strength" , Int)
+--    ]
+
+-- type Person =
+--   '[ '("person_name", Text)
+--    , '("person_id"  , Int)
+--    , '("person_age" , Int)
+--    ]
+--
+-- type Employment =
+--   '[ '("start_date", Day)
+--    , '("person_id", Int)
+--    , '("company_id", Int)
+--    ]
+--
+-- type Company =
+--   '[ '("company_name", Text)
+--    , '("company_id", Int)
+--    ]
 

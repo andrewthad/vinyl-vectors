@@ -35,6 +35,30 @@ defSort = Merge.sort
 defSortBy :: (PrimMonad m, GM.MVector v e) => (e -> e -> Ordering) -> v (PrimState m) e -> m ()
 defSortBy = Merge.sortBy
 
+uniq :: (G.Vector v a, Eq a) => v a -> v a
+uniq v = if G.length v > 0
+  then runST $ do
+    let initVal = v G.! 0
+    m <- GM.new (G.length v)
+    GM.write m 0 initVal
+    mlen <- uniqHelper 1 1 initVal v m
+    G.freeze $ GM.slice 0 mlen m
+  else G.empty
+
+uniqHelper :: (GM.MVector u a, G.Vector v a, Eq a, PrimMonad m)
+  => Int -> Int -> a -> v a -> u (PrimState m) a -> m Int
+uniqHelper i j prev v m = if (i < G.length v)
+  then let current = v G.! i in
+    if current == prev
+      then uniqHelper (i + 1) j prev v m
+      else do
+        GM.write m j current
+        uniqHelper (i + 1) (j + 1) current v m
+  else return j
+
+uniqNaive :: Eq a => [a] -> [a]
+uniqNaive = map List.head . List.group
+
 -- This is a poorly performing but certainly correct
 -- version of the algorithm. Notice that the produced
 -- ordering of the indices may differ.
@@ -72,10 +96,10 @@ indexMany ixs xs = runST $ do
 
 indexManyPredicate :: ( G.Vector v a )
   => (a -> Bool) -> U.Vector Int -> v a -> U.Vector Bool
-indexManyPredicate pred ixs xs = runST $ do
+indexManyPredicate predicate ixs xs = runST $ do
   res <- UM.new (U.length ixs)
   flip U.imapM_ ixs $ \i ix -> do
-    UM.write res i (pred (xs G.! ix))
+    UM.write res i (predicate (xs G.! ix))
   U.freeze res
 
 fullJoinIndicesImmutable ::

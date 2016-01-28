@@ -3,42 +3,40 @@
 
 module Data.Vinyl.Named where
 
-import           Data.Coerce                                         (coerce)
+import           Data.Coerce                                                (coerce)
 import           Data.Constraint
-import           Data.Dynamic                                        (Dynamic, dynTypeRep, fromDynamic,
-                                                                      toDyn)
-import           Data.List.NonEmpty                                  (NonEmpty ((:|)))
+import           Data.Dynamic                                               (Dynamic, dynTypeRep, fromDynamic, toDyn)
+import           Data.List.NonEmpty                                         (NonEmpty ((:|)))
 import           Data.List.TypeLevel
 import           Data.List.TypeLevel.Constraint
-import           Data.Map.Strict                                     (Map)
-import qualified Data.Map.Strict                                     as Map
-import           Data.Proxy                                          (Proxy (Proxy))
-import           Data.Tagged.Functor                                 (TaggedFunctor (..), showSymbolTaggedFunctor)
+import           Data.Map.Strict                                            (Map)
+import qualified Data.Map.Strict                                            as Map
+import           Data.Proxy                                                 (Proxy (Proxy))
+import           Data.Tagged.Functor                                        (TaggedFunctor (..), showSymbolTaggedFunctor)
 import           Data.Tuple.TypeLevel
-import           Data.Type.Equality                                  ((:~:) (Refl))
-import           Data.Typeable                                       (TypeRep,
-                                                                      Typeable,
-                                                                      eqT,
-                                                                      typeRep)
+import           Data.Type.Equality                                         ((:~:) (Refl))
+import           Data.Typeable                                              (TypeRep, Typeable, eqT, typeRep)
 import           Data.TypeString
-import qualified Data.Vector.Generic                                 as G
-import qualified Data.Vector.Hybrid                                  as Hybrid
-import qualified Data.Vector.Unboxed                                 as U
-import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join (indexMany, recFullJoinIndicesImmutable)
-import           Data.Vector.Vinyl.Default.Types                     (HasDefaultVector (..), VectorVal (..))
-import           Data.Vinyl.Core                                     (Rec (..), RecApplicative (rpure),
-                                                                      rtraverse)
+import qualified Data.Vector.Algorithms.Merge                               as Merge
+import qualified Data.Vector.Generic                                        as G
+import qualified Data.Vector.Hybrid                                         as Hybrid
+import qualified Data.Vector.Unboxed                                        as U
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic             as VV
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Implication as VV
+import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal    as VV
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join        (indexMany, recFullJoinIndicesImmutable, uniq)
+import           Data.Vector.Vinyl.Default.Types                            (HasDefaultVector (..), VectorVal (..))
+import           Data.Vinyl.Class.Implication                               (listAllOrd)
+import           Data.Vinyl.Core                                            (Rec (..), RecApplicative (rpure), rtraverse)
 import           Data.Vinyl.DictFun
-import           Data.Vinyl.Functor                                  (Compose (..), Const (..), Identity (..))
-import           Data.Vinyl.Functor                                  (Identity)
-import           Data.Vinyl.TypeLevel                                (RecAll)
-import           GHC.Exts                                            (Constraint)
-import           GHC.Prim                                            (Any)
-import           GHC.TypeLits                                        (CmpSymbol, KnownSymbol,
-                                                                      Symbol,
-                                                                      symbolVal)
+import           Data.Vinyl.Functor                                         (Compose (..), Const (..), Identity (..))
+import           Data.Vinyl.Functor                                         (Identity)
+import           Data.Vinyl.TypeLevel                                       (RecAll)
+import           GHC.Exts                                                   (Constraint)
+import           GHC.Prim                                                   (Any)
+import           GHC.TypeLits                                               (CmpSymbol, KnownSymbol, Symbol, symbolVal)
 import           Test.QuickCheck.Arbitrary
-import           Unsafe.Coerce                                       (unsafeCoerce)
+import           Unsafe.Coerce                                              (unsafeCoerce)
 
 type RelOpConstraints =
       (ConstrainFst TypeString :&: ConstrainSnd Typeable)
@@ -108,6 +106,10 @@ data NonEmptyHiddenRec (f :: * -> *) where
 --   ConstrainedNonEmptyHiddenRec ::
 --     RecAll f (r ': rs) c => Rec f (r ': rs) -> ConstrainedNonEmptyHiddenRec f c
 
+flattenIndexedHiddenVectors :: [(U.Vector Int, HiddenVector)] -> [HiddenVector]
+flattenIndexedHiddenVectors = map go
+  where
+  go (ixs, HiddenVector (VectorVal v)) = HiddenVector (VectorVal (indexMany ixs v ))
 
 -- This only works if `rs` does not contain duplicate names
 indexedHiddenVectorMapsToRec ::
@@ -180,9 +182,20 @@ hiddenVectorsToHiddenRec dvs = case dvs of
   HiddenVector v : dvsNext -> case hiddenVectorsToHiddenRec dvsNext of
     HiddenRec rec -> HiddenRec (v :& rec)
 
+hiddenRecToHiddenVectors :: HiddenRec VectorVal -> [HiddenVector]
+hiddenRecToHiddenVectors (HiddenRec h) = go h
+  where
+  go :: forall rs. ListAllJoinConstraints rs => Rec VectorVal rs -> [HiddenVector]
+  go RNil = []
+  go (r :& rs) = HiddenVector r : go rs
+
 nonEmptyHiddenVectorsToHiddenRec :: NonEmpty HiddenVector -> NonEmptyHiddenRec VectorVal
 nonEmptyHiddenVectorsToHiddenRec (HiddenVector a :| as) = case hiddenVectorsToHiddenRec as of
   HiddenRec rs -> NonEmptyHiddenRec (a :& rs)
+
+hiddenRecToNonEmptyHiddenVectors :: NonEmptyHiddenRec VectorVal -> NonEmpty HiddenVector
+hiddenRecToNonEmptyHiddenVectors (NonEmptyHiddenRec (r :& rs)) =
+  HiddenVector r :| hiddenRecToHiddenVectors (HiddenRec rs)
 
 uncheckedFullJoinIndices ::
      [(String,String)]
@@ -231,6 +244,16 @@ uncheckedEqT _ _ = case (eqT :: Maybe (a :~: b)) of
   Nothing -> error "uncheckedEqT: mismatched types"
   Just Refl -> Refl
 
+removeDuplicates :: NonEmptyHiddenRec VectorVal -> NonEmptyHiddenRec VectorVal
+removeDuplicates (NonEmptyHiddenRec rec) =
+  case listAllOrd (Proxy :: Proxy Identity) rec (Sub Dict) of
+    Sub Dict -> case VV.listAllVector rec of
+      Sub Dict -> id
+        $ NonEmptyHiddenRec
+        $ VV.stripV
+        $ uniq
+        $ VV.modify Merge.sort
+        $ VV.V rec
 
 -- A convenience function
 zipNamesExplicit :: forall f proxy ks vs.

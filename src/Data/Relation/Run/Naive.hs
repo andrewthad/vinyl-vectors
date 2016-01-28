@@ -18,6 +18,7 @@ import           Data.List.TypeLevel.Union           (Union)
 import qualified Data.List.TypeLevel.Union           as Union
 import           Data.List.TypeLevel.Witness
 import qualified Data.List.TypeLevel.Witness.OrdList as OrdList
+import qualified Data.List.TypeLevel.Witness.Rec     as Rec
 import           Data.Map                            (Map)
 import qualified Data.Map                            as Map
 import           Data.Proxy
@@ -62,7 +63,26 @@ run = go
     (relOpOrdered relOpA) (relOpOrdered relOpB)
     (relOpConstraints relOpA) (relOpConstraints relOpB)
     (getNaive $ go relOpA) (getNaive $ go relOpB)
+  go (RelBinary binOp relOpA relOpB) =
+    case recDictFunToDict $ relOpOrd relOpA of
+      Dict -> case listAllToTaggedRecAll (Proxy :: Proxy Ord) (Proxy :: Proxy Identity) (proxifyRelOp relOpA) (Sub Dict) of
+        Sub Dict -> case recAllOrd (Proxy :: Proxy (TaggedFunctor Identity)) (proxifyRelOp relOpA) of
+          Sub Dict -> Naive $ setOp binOp
+            (getNaive $ go relOpA)
+            (getNaive $ go relOpB)
+  go r@(RelRename _ insOrd rm relOp) = case dictFunToRecAll tfiProxy cproxy (Sub Dict) dicts of
+    Dict -> case recAllOrd tfiProxy dicts of
+      Sub Dict -> Naive . Set.map (Rec.rename rm (OrdList.downgradeInsert insOrd))
+                . getNaive . go $ relOp
+    where dicts = relOpOrd r
+          tfiProxy = Proxy :: Proxy (TaggedFunctor Identity)
+          cproxy = Proxy :: Proxy Ord
 
+setOp :: Ord a => BinOp -> Set a -> Set a -> Set a
+setOp binOp = case binOp of
+  BinOpSubtraction  -> Set.difference
+  BinOpIntersection -> Set.intersection
+  BinOpUnion        -> Set.union
 
 naturalJoinExplicit :: forall ls rs is bs lsOnly rsOnly.
   ( lsOnly ~ Subtraction ls rs

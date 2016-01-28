@@ -64,6 +64,7 @@ library
     , Data.List.TypeLevel.Witness
     , Data.List.TypeLevel.Witness.OrdList
     , Data.List.TypeLevel.Witness.BoundedList
+    , Data.List.TypeLevel.Witness.Rec
     , Data.List.TypeLevel.Union
     , Data.List.TypeLevel.Subtraction
     , Data.List.TypeLevel.Intersection

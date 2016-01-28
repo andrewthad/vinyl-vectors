@@ -23,7 +23,8 @@ import qualified Data.Vector.Hybrid                                      as Hybr
 import qualified Data.Vector.Unboxed                                     as Unboxed
 import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic          as Vinyl
 import qualified Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal as Vinyl
-import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join     (fullJoinIndices, fullJoinIndicesNaive)
+import           Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Join     (fullJoinIndices, fullJoinIndicesNaive,
+                                                                          uniq, uniqNaive)
 import           Data.Vector.Vinyl.Default.Types                         (VectorVal)
 
 import           Data.Relation.Backend                                   as Backend
@@ -43,6 +44,7 @@ main = do
 tests =
   [ testGroup "Correctness of Algorithms"
     [ testProperty "Full Join Indices" correctFullJoinIndices
+    , testProperty "Uniq - Remove Repeated Values" correctUniq
     ]
   , testGroup "Relational Operations - Naive"
     $ relationSpecTests Naive.runTest
@@ -53,10 +55,23 @@ tests =
   , testGroup "Relational Operations - Basic"
     $ relationSpecTests Basic.runTest
        $ ListToRelation (Backend.Basic "bla" . Basic.fromTest)
-      :& ListToRelation (Backend.Basic "bla" . Basic.fromTest)
-      :& ListToRelation (Backend.Basic "bla" . Basic.fromTest)
+      :& ListToRelation (Backend.Basic "foo" . Basic.fromTest)
+      :& ListToRelation (Backend.Basic "bar" . Basic.fromTest)
       :& RNil
   ]
+
+correctUniq :: [Int] -> Property.Result
+correctUniq as = if actual == expected
+  then Property.succeeded
+  else Property.failed
+    { Property.reason = unlines
+      [ "Correct result:   " ++ show expected
+      , "Algorithm result: " ++ show actual
+      ]
+    }
+  where
+  expected = uniqNaive as
+  actual   = Vector.toList (uniq (Vector.fromList as))
 
 correctFullJoinIndices :: [Int] -> [Int] -> Property.Result
 correctFullJoinIndices as bs = if actual == expected

@@ -1,18 +1,18 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 #ifndef MIN_VERSION_vector
 #define MIN_VERSION_vector(x,y,z) 1
@@ -21,29 +21,34 @@
 module Data.Vector.Vinyl.Default.NonEmpty.Monomorphic.Internal
   ( MVector(..)
   , Vector(..)
+  , stripV
   ) where
 
-import Control.Monad
-import Data.Monoid
-import Data.Typeable (Typeable)
-import GHC.Exts (Constraint)
-import Control.Monad.Primitive (PrimMonad,PrimState)
-import qualified Data.Vector.Generic.Mutable as GM
-import qualified Data.Vector.Generic as G
+import           Control.Monad
+import           Control.Monad.Primitive         (PrimMonad, PrimState)
+import           Data.Monoid
+import           Data.Typeable                   (Typeable)
+import qualified Data.Vector.Generic             as G
+import qualified Data.Vector.Generic.Mutable     as GM
+import           GHC.Exts                        (Constraint)
 
 #if MIN_VERSION_vector(0,11,0)
-import Data.Vector.Fusion.Bundle as Stream
+import           Data.Vector.Fusion.Bundle       as Stream
 #else
-import Data.Vector.Fusion.Stream as Stream
+import           Data.Vector.Fusion.Stream       as Stream
 #endif
 
-import Prelude hiding ( length, null, replicate, reverse, map, read, take, drop, init, tail )
-import Text.Read
-import Data.Proxy
+import           Data.Proxy
+import           Prelude                         hiding (drop, init, length,
+                                                  map, null, read, replicate,
+                                                  reverse, tail, take)
+import           Text.Read
 
-import Data.Vinyl.Core(Rec(..))
-import Data.Vinyl.Functor (Identity(..))
-import Data.Vector.Vinyl.Default.Types (VectorVal(..),MVectorVal(..),HasDefaultVector(..))
+import           Data.Vector.Vinyl.Default.Types (HasDefaultVector (..),
+                                                  MVectorVal (..),
+                                                  VectorVal (..))
+import           Data.Vinyl.Core                 (Rec (..))
+import           Data.Vinyl.Functor              (Identity (..))
 
 data MVector :: * -> * -> * where
   MV :: !(Rec (MVectorVal s) rs) -> MVector s (Rec Identity rs)
@@ -56,14 +61,14 @@ instance ( HasDefaultVector r
   {-# INLINE basicLength #-}
   basicUnsafeSlice s e (MV (MVectorVal v :& RNil)) = MV (MVectorVal (GM.basicUnsafeSlice s e v) :& RNil)
   {-# INLINE basicUnsafeSlice #-}
-  basicOverlaps (MV (MVectorVal a :& RNil)) (MV (MVectorVal b :& RNil)) = GM.basicOverlaps a b 
+  basicOverlaps (MV (MVectorVal a :& RNil)) (MV (MVectorVal b :& RNil)) = GM.basicOverlaps a b
   {-# INLINE basicOverlaps #-}
   basicUnsafeNew n = do
-    r <- GM.basicUnsafeNew n 
+    r <- GM.basicUnsafeNew n
     return (MV (MVectorVal r :& RNil))
   {-# INLINE basicUnsafeNew #-}
   basicUnsafeReplicate n (Identity v :& RNil) = do
-    r <- GM.basicUnsafeReplicate n v 
+    r <- GM.basicUnsafeReplicate n v
     return (MV (MVectorVal r :& RNil))
   {-# INLINE basicUnsafeReplicate #-}
   basicUnsafeRead (MV (MVectorVal v :& RNil)) n = do
@@ -101,17 +106,17 @@ instance ( GM.MVector MVector (Rec Identity (s ': rs))
     MV rsNext -> MV (MVectorVal (GM.basicUnsafeSlice s e v) :& rsNext)
   {-# INLINE basicUnsafeSlice #-}
 
-  basicOverlaps (MV (MVectorVal a :& as)) (MV (MVectorVal b :& bs)) = 
+  basicOverlaps (MV (MVectorVal a :& as)) (MV (MVectorVal b :& bs)) =
     GM.basicOverlaps a b || GM.basicOverlaps (MV as) (MV bs)
   {-# INLINE basicOverlaps #-}
 
   basicUnsafeNew :: forall m. PrimMonad m => Int -> m (MVector (PrimState m) (Rec Identity (r ': s ': rs)))
-  basicUnsafeNew n = 
+  basicUnsafeNew n =
     consVec (Proxy :: Proxy m) <$> GM.basicUnsafeNew n <*> GM.basicUnsafeNew n
   {-# INLINE basicUnsafeNew #-}
-  
+
   basicUnsafeReplicate :: forall m. PrimMonad m => Int -> Rec Identity (r ': s ': rs) -> m (MVector (PrimState m) (Rec Identity (r ': s ': rs)))
-  basicUnsafeReplicate n (Identity v :& rs) = 
+  basicUnsafeReplicate n (Identity v :& rs) =
     consVec (Proxy :: Proxy m) <$> GM.basicUnsafeReplicate n v <*> GM.basicUnsafeReplicate n rs
   {-# INLINE basicUnsafeReplicate #-}
 
@@ -164,7 +169,7 @@ data Vector :: * -> * where
   V :: !(Rec VectorVal rs) -> Vector (Rec Identity rs)
   deriving Typeable
 
-type instance G.Mutable Vector = MVector 
+type instance G.Mutable Vector = MVector
 
 instance ( HasDefaultVector r
          )
@@ -228,7 +233,7 @@ instance ( G.Vector Vector (Rec Identity (s ': rs))
 
   elemseq (V (VectorVal v :& vrs)) (Identity a :& rs) b = G.elemseq v a (G.elemseq (V vrs) rs b)
   {-# INLINE elemseq #-}
- 
+
 
 instance (x ~ Rec Identity rs, Eq x, G.Vector Vector x) => Eq (Vector x) where
   xs == ys = Stream.eq (G.stream xs) (G.stream ys)
@@ -260,7 +265,7 @@ instance (x ~ Rec Identity rs, Ord x, G.Vector Vector x) => Ord (Vector x) where
 -- Helper functions for instance methods
 -----------------------------------------
 consVec :: Proxy m
-        -> G.Mutable (DefaultVector r) (PrimState m) r 
+        -> G.Mutable (DefaultVector r) (PrimState m) r
         -> MVector (PrimState m) (Rec Identity rs)
         -> MVector (PrimState m) (Rec Identity (r ': rs))
 consVec _ v (MV rs) = MV (MVectorVal v :& rs)

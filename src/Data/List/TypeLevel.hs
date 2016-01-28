@@ -93,6 +93,7 @@ instance (ImplicitOrdList (n ': ns), Cmp (Fst m) (Fst n) ~ 'GT, Cmp (Fst n) (Fst
     => ImplicitOrdList (m ': n ': ns) where
   implicitOrdList = OrdListCons (implicitOrdList :: OrdList (n ': ns))
 
+
 listHeadProxy :: OrdList (a ': as) -> Proxy a
 listHeadProxy _ = Proxy
 
@@ -131,6 +132,41 @@ sublistSubLength = go
   go (SublistSuper s) = go s
   go (SublistBoth s) = 1 + go s
 
+------------------
+-- Implicit Remove Elem
+------------------
+
+type family RemoveElemF (r :: k) (rs :: [k]) where
+  RemoveElemF r (r ': rs) = rs
+  RemoveElemF r (s ': rs) = s ': RemoveElemF r rs
+
+class ImplicitRemoveElem (r :: k) (rs :: [k]) (ss :: [k]) where
+  implicitRemoveElem :: RemoveElem r rs ss
+
+instance (ImplicitRemoveElem r rs ss) => ImplicitRemoveElem (r :: k) (a ': rs :: [k]) (a ': ss :: [k]) where
+  implicitRemoveElem = RemoveElemNext implicitRemoveElem
+
+instance ImplicitRemoveElem (r :: k) (r ': rs :: [k]) (rs :: [k]) where
+  implicitRemoveElem = RemoveElemDone
+
+------------------
+-- Implicit Insert Elem Ord
+------------------
+
+type family InsertElemF (r :: (k,v)) (rs :: [(k,v)]) where
+  InsertElemF '(k,v) '[] = '[ '(k,v)]
+  InsertElemF '(k,v) ('(rk,rv) ': rs) = InsertElemFCmp (Cmp k rk) '(k,v) ('(rk,rv) ': rs)
+
+type family InsertElemFCmp o r rs where
+  InsertElemFCmp 'GT x rs = x ': rs
+  InsertElemFCmp 'LT x (r ': rs) = r ': InsertElemF x rs
+
+class ImplicitInsertElemOrd (r :: (k,v)) (rs :: [(k,v)]) (ss :: [(k,v)]) where
+  implicitInsertElemOrd :: InsertElemOrd r rs ss
+
+instance ImplicitInsertElemOrd r '[] '[r] where
+  implicitInsertElemOrd = InsertElemOrdSpecial SpecialInsertSingle
+
 --------------------
 -- Implicit Sublist
 --------------------
@@ -161,6 +197,11 @@ type family SublistLookup (super :: [(k,v)]) (sub :: k) :: v where
 type family SublistLookupManyUnordered (super :: [(k,v)]) (sub :: [k]) :: [(k,v)] where
   SublistLookupManyUnordered xs '[] = '[]
   SublistLookupManyUnordered xs (k ': ks) = '(k,SublistLookup xs k) ': SublistLookupManyUnordered xs ks
+
+-- This type family is partial.
+type family Lookup (key :: k) (xs :: [(k,v)]) where
+  Lookup a ( '(a,v) ': xs) = v
+  Lookup a ( '(b,v) ': xs) = Lookup a xs
 
 implicitSublistSub :: ImplicitSublist super sub => Proxy sub -> Sublist super sub
 implicitSublistSub _ = implicitSublist
@@ -200,9 +241,6 @@ invertGt _ _ = unsafeCoerceConstraint
 -- ntEqT _ _ = if ntType (Proxy :: Proxy a) == ntType (Proxy :: Proxy b)
 --   then Just $ unsafeCoerce Refl
 --   else Nothing
-
-ordUnion :: OrdList ls -> OrdList rs -> OrdList (Union ls rs)
-ordUnion _ _ = error "ordUnion: Write this function. It's a big one."
 
 ordRec :: OrdList rs -> Rec Proxy rs
 ordRec OrdListNil = RNil
@@ -302,6 +340,8 @@ type family FilterMono (f :: FilterFlag) (p :: k) (xs :: [k]) :: [k] where
   FilterMono FMin p ( k ': xs) = If (Cmp k p == LT) ( k ': (FilterMono FMin p xs)) (FilterMono FMin p xs)
   FilterMono FMax p ( k ': xs) = If (Cmp k p == GT || Cmp k p == EQ) (k ': (FilterMono FMax p xs)) (FilterMono FMax p xs)
 
+
+
 type family Sort (a :: [(k,v)]) :: [(k,v)] where
   Sort '[] = '[]
   Sort ( '(k,v) ': xs) = Sort (Filter FMax k xs) ++ '[ '(k,v)] ++ Sort (Filter FMin k xs)
@@ -309,9 +349,16 @@ type family Sort (a :: [(k,v)]) :: [(k,v)] where
 -- rewrite to make this way more efficient
 type family Filter (f :: FilterFlag) (p :: k) (xs :: [(k,v)]) :: [(k,v)] where
   Filter f p '[] = '[]
-  Filter FMin p ( '(k,v) ': xs) = If (Cmp k p == LT) ( '(k,v) ': (Filter FMin p xs)) (Filter FMin p xs)
-  Filter FMax p ( '(k,v) ': xs) = If (Cmp k p == GT || Cmp k p == EQ) ( '(k,v) ': (Filter FMax p xs)) (Filter FMax p xs)
+  Filter 'FMin p ( '(k,v) ': xs) = FilterCmp FMin (Cmp k p) p k v xs
+  Filter 'FMax p ( '(k,v) ': xs) = FilterCmp FMax (Cmp k p) p k v xs
 
+type family FilterCmp (f :: FilterFlag) (o :: Ordering) (p :: k) (key :: k) (val :: v) (xs :: [(k,v)]) where
+  FilterCmp 'FMin 'LT p k v xs = '(k,v) ': (Filter 'FMin p xs)
+  FilterCmp 'FMin 'EQ p k v xs = Filter 'FMin p xs
+  FilterCmp 'FMin 'GT p k v xs = Filter 'FMin p xs
+  FilterCmp 'FMax 'LT p k v xs = Filter 'FMax p xs
+  FilterCmp 'FMax 'EQ p k v xs = '(k,v) ': (Filter 'FMax p xs)
+  FilterCmp 'FMax 'GT p k v xs = '(k,v) ': (Filter 'FMax p xs)
 
 unionSublist ::
      Rec (DictFun (ConstrainFst TypeString :&: ConstrainSnd Typeable)) superA
